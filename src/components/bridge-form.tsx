@@ -6,28 +6,19 @@ import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
 import { ChainSelector } from "./chain-selector";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
-
-type BridgeStatus =
-  | "idle"
-  | "approving"
-  | "burning"
-  | "attesting"
-  | "minting"
-  | "complete"
-  | "error";
+import { useBridge } from "@/hooks/useBridge";
 
 export function BridgeForm() {
   const { address, isConnected } = useAccount();
   const [sourceChain, setSourceChain] = useState<number>(sepolia.id);
   const [destChain, setDestChain] = useState<number>(baseSepolia.id);
   const [amount, setAmount] = useState<string>("");
-  const [status] = useState<BridgeStatus>("idle");
+  const { state, approve, bridge, reset } = useBridge();
 
   // Auto-flip dest if user picks same chain as source
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
     if (chainId === destChain) {
-      // Pick first available chain that's not the new source
       const allChainIds = Object.keys(USDC_ADDRESSES).map(Number);
       const fallback = allChainIds.find((id) => id !== chainId);
       if (fallback) setDestChain(fallback);
@@ -56,18 +47,30 @@ export function BridgeForm() {
   const hasAmount = amountNum > 0;
   const sufficientBalance = amountNum <= balance;
 
-  // Placeholder values (real fee/ETA in Phase 2)
   const feePlaceholder = 0.5;
   const receiveAmount = hasAmount ? Math.max(0, amountNum - feePlaceholder) : 0;
-  const etaPlaceholder = "~15 minutes (CCTP V2)";
+  const etaPlaceholder = "~30 seconds (CCTP V2 Fast)";
 
   const sourceInfo = CHAIN_INFO[sourceChain];
   const destInfo = CHAIN_INFO[destChain];
 
-  // Button state logic
+  // Button state derived from bridge hook status
+  const status = state.status;
+  const isApproving = status === "approving";
+  const isApproved = status === "approved";
+  const isBridging = ["burning", "attesting", "minting"].includes(status);
+  const isComplete = status === "complete";
+  const hasError = status === "error";
+
   const canApprove =
-    isConnected && hasAmount && sufficientBalance && status === "idle";
-  const canBridge = false; // enable after approve (Milestone 2)
+    isConnected &&
+    hasAmount &&
+    sufficientBalance &&
+    (status === "idle" || hasError);
+  const canBridge = isApproved && hasAmount && sufficientBalance;
+
+  const handleApprove = () => approve({ sourceChain });
+  const handleBridge = () => bridge({ sourceChain, destChain, amount });
 
   if (!isConnected) {
     return (
@@ -94,7 +97,6 @@ export function BridgeForm() {
         </div>
       </div>
 
-      {/* Visual divider arrow */}
       <div className="flex items-center justify-center -my-3">
         <div className="rounded-full border border-zinc-700 bg-zinc-900 w-8 h-8 flex items-center justify-center text-zinc-400">
           ↓
@@ -125,11 +127,12 @@ export function BridgeForm() {
             onChange={(e) => setAmount(e.target.value)}
             min="0"
             step="0.01"
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 pr-20 text-base text-zinc-200 tabular-nums focus:border-blue-500 focus:outline-none"
+            disabled={isBridging || isApproving}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 pr-20 text-base text-zinc-200 tabular-nums focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
           <button
             onClick={() => setAmount(balance.toString())}
-            disabled={balance === 0}
+            disabled={balance === 0 || isBridging || isApproving}
             className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Max
@@ -147,7 +150,7 @@ export function BridgeForm() {
           <span className="text-zinc-300">{etaPlaceholder}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-zinc-500">Fee</span>
+          <span className="text-zinc-500">Max fee</span>
           <span className="text-zinc-300 tabular-nums">
             ~{feePlaceholder.toFixed(2)} USDC
           </span>
@@ -163,27 +166,118 @@ export function BridgeForm() {
         </div>
       </div>
 
+      {/* Status messages */}
+      {status === "approving" && (
+        <div className="text-xs text-blue-400 text-center">
+          ⏳ Approving USDC on {sourceInfo.name}...
+        </div>
+      )}
+      {status === "approved" && (
+        <div className="text-xs text-green-400 text-center">
+          ✓ Approved. Click &quot;Bridge&quot; to continue.
+        </div>
+      )}
+      {status === "burning" && (
+        <div className="text-xs text-blue-400 text-center">
+          ⏳ Burning USDC on {sourceInfo.name}...
+        </div>
+      )}
+      {status === "attesting" && (
+        <div className="text-xs text-blue-400 text-center">
+          ⏳ Waiting for Circle attestation
+          {state.attestationStatus && ` (${state.attestationStatus})`}...
+        </div>
+      )}
+      {status === "minting" && (
+        <div className="text-xs text-blue-400 text-center">
+          ⏳ Minting USDC on {destInfo.name}...
+        </div>
+      )}
+      {status === "complete" && (
+        <div className="text-xs text-green-400 text-center">
+          ✓ Bridge complete! USDC minted on {destInfo.name}.
+        </div>
+      )}
+      {status === "error" && state.errorMessage && (
+        <div className="text-xs text-red-400 text-center break-words">
+          ⚠ {state.errorMessage}
+        </div>
+      )}
+
       {/* Action Buttons */}
       <div className="space-y-2">
-        <button
-          disabled={!canApprove}
-          className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
-        >
-          {status === "approving"
-            ? "Approving..."
-            : `Approve ${sourceInfo.name} USDC`}
-        </button>
-        <button
-          disabled={!canBridge}
-          className="w-full rounded-lg bg-zinc-800 disabled:bg-zinc-900 disabled:text-zinc-600 disabled:cursor-not-allowed text-zinc-300 font-medium py-3 px-4 text-sm transition-colors"
-        >
-          Bridge to {destInfo.name}
-        </button>
+        {!isComplete ? (
+          <>
+            <button
+              onClick={handleApprove}
+              disabled={!canApprove}
+              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+            >
+              {isApproving
+                ? "Approving..."
+                : isApproved
+                ? `✓ Approved`
+                : `Approve ${sourceInfo.name} USDC`}
+            </button>
+            <button
+              onClick={handleBridge}
+              disabled={!canBridge || isBridging}
+              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+            >
+              {isBridging
+                ? status === "burning"
+                  ? "Burning..."
+                  : status === "attesting"
+                  ? "Waiting for attestation..."
+                  : "Minting..."
+                : `Bridge to ${destInfo.name}`}
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => {
+              reset();
+              setAmount("");
+            }}
+            className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 px-4 text-sm transition-colors"
+          >
+            Bridge Again
+          </button>
+        )}
       </div>
 
-      {/* Phase note */}
+      {/* Tx hash links */}
+      {(state.approveTxHash || state.burnTxHash || state.mintTxHash) && (
+        <div className="text-xs text-zinc-500 space-y-1 pt-2 border-t border-zinc-800/50">
+          {state.approveTxHash && (
+            <p className="truncate">
+              Approve:{" "}
+              <span className="text-zinc-400 font-mono">
+                {state.approveTxHash.slice(0, 10)}...{state.approveTxHash.slice(-8)}
+              </span>
+            </p>
+          )}
+          {state.burnTxHash && (
+            <p className="truncate">
+              Burn:{" "}
+              <span className="text-zinc-400 font-mono">
+                {state.burnTxHash.slice(0, 10)}...{state.burnTxHash.slice(-8)}
+              </span>
+            </p>
+          )}
+          {state.mintTxHash && (
+            <p className="truncate">
+              Mint:{" "}
+              <span className="text-zinc-400 font-mono">
+                {state.mintTxHash.slice(0, 10)}...{state.mintTxHash.slice(-8)}
+              </span>
+            </p>
+          )}
+        </div>
+      )}
+
       <p className="text-xs text-zinc-600 text-center">
-        Phase 1 · CCTP V2 testnet · Real on-chain bridge coming in next update
+        Phase 1 · CCTP V2 testnet · Fast Transfer enabled
       </p>
     </div>
   );
