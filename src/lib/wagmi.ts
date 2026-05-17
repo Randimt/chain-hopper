@@ -3,16 +3,20 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { mainnet, base, arbitrum, optimism, polygon, avalanche } from "wagmi/chains";
 
+// WalletConnect Project ID — set in Vercel env vars (NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID)
+// Get yours free at https://cloud.walletconnect.com
+const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo";
+
 // Chain Hopper supported chains (Phase 1 - EVM only)
 export const config = getDefaultConfig({
   appName: "Chain Hopper",
-  projectId: "YOUR_WALLETCONNECT_PROJECT_ID", // ganti nanti
+  projectId,
   chains: [mainnet, base, arbitrum, optimism, polygon, avalanche],
   ssr: true, // Next.js App Router needs this
 });
 
 // USDC contract addresses per chain (mainnet)
-// Source: Circle skill use-usdc + https://developers.circle.com/stablecoins/usdc-contract-addresses
+// Source: https://developers.circle.com/stablecoins/usdc-contract-addresses
 export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
   [mainnet.id]: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   [base.id]: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
