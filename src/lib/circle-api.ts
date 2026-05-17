@@ -62,13 +62,20 @@ export async function pollAttestation(
 
         onProgress?.(message?.status ?? "pending", attempt);
       } else {
-        // 404 means message not yet indexed — keep polling
-        onProgress?.("indexing", attempt);
+        // Log non-200 to console for debugging
+        console.warn(`[Iris] HTTP ${res.status} on attempt ${attempt}`, {
+          url,
+          status: res.status,
+          statusText: res.statusText,
+        });
+        onProgress?.(`http_${res.status}`, attempt);
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") throw err;
-      // Network errors are transient — retry
-      onProgress?.("network_error", attempt);
+      // Log network errors to console with details
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.warn(`[Iris] Fetch failed on attempt ${attempt}:`, errMsg, err);
+      onProgress?.(`fetch_error: ${errMsg.slice(0, 50)}`, attempt);
     }
 
     await new Promise((r) => setTimeout(r, INTERVAL_MS));
