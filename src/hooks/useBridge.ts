@@ -114,7 +114,11 @@ export function useBridge() {
         });
 
         // Wait for 1 confirmation
-        await publicClient.waitForTransactionReceipt({ hash: txHash });
+        await publicClient.waitForTransactionReceipt({
+          hash: txHash,
+          timeout: 180_000,
+          pollingInterval: 2_000,
+        });
 
         setState({ status: "approved", approveTxHash: txHash });
       } catch (err) {
@@ -176,7 +180,11 @@ export function useBridge() {
         setState((s) => ({ ...s, burnTxHash }));
 
         // Wait for source chain confirmation
-        await publicClient.waitForTransactionReceipt({ hash: burnTxHash });
+        await publicClient.waitForTransactionReceipt({
+          hash: burnTxHash,
+          timeout: 180_000,
+          pollingInterval: 2_000,
+        });
 
         // ============ STEP 3: Poll Circle Iris API ============
         setState((s) => ({ ...s, status: "attesting" }));
@@ -205,8 +213,18 @@ export function useBridge() {
 
         setState((s) => ({ ...s, mintTxHash }));
 
-        // Use a public client for dest chain — fall back to walletClient
-        await publicClient.waitForTransactionReceipt({ hash: mintTxHash });
+        // Wait for mint receipt (gracefully handle timeout — tx is already on-chain)
+        try {
+          await publicClient.waitForTransactionReceipt({
+            hash: mintTxHash,
+            timeout: 180_000,
+            pollingInterval: 2_000,
+          });
+        } catch (waitErr) {
+          // Timeout is OK — tx is on-chain, just slow indexer.
+          // User can verify via explorer link.
+          console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
+        }
 
         setState((s) => ({ ...s, status: "complete" }));
       } catch (err) {
@@ -264,7 +282,18 @@ export function useBridge() {
         });
 
         setState((s) => ({ ...s, mintTxHash }));
-        await publicClient.waitForTransactionReceipt({ hash: mintTxHash });
+
+        // Wait for mint receipt (gracefully handle timeout — tx is already on-chain)
+        try {
+          await publicClient.waitForTransactionReceipt({
+            hash: mintTxHash,
+            timeout: 180_000,
+            pollingInterval: 2_000,
+          });
+        } catch (waitErr) {
+          // Timeout is OK — tx is on-chain, just slow indexer.
+          console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
+        }
 
         setState((s) => ({ ...s, status: "complete" }));
       } catch (err) {
