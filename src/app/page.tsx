@@ -2,6 +2,7 @@
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { UsdcBalances } from "@/components/usdc-balances";
+import { BridgeForm } from "@/components/bridge-form";
 
 export default function Home() {
   return (
@@ -28,28 +29,39 @@ export default function Home() {
             </span>
           </h2>
           <p className="text-zinc-400 max-w-xl mx-auto">
-            View USDC balances across 6 EVM chains.
+            View and bridge USDC across 6 EVM testnets via Circle CCTP.
             One click, transparent fees, no surprises.
           </p>
         </div>
 
-        {/* Balance section */}
-        <section className="max-w-3xl mx-auto">
-          <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
-            Your USDC Holdings
-          </h3>
-          <UsdcBalances />
-        </section>
+        {/* Two-column on md+, stacked on mobile */}
+        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          {/* Left: Balance section */}
+          <section>
+            <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
+              Your USDC Holdings
+            </h3>
+            <UsdcBalances />
+          </section>
 
-        {/* Coming soon — minimal, no transitions */}
-        <section className="max-w-3xl mx-auto mt-12">
+          {/* Right: Bridge form */}
+          <section>
+            <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
+              Bridge USDC
+            </h3>
+            <BridgeForm />
+          </section>
+        </div>
+
+        {/* Coming soon */}
+        <section className="max-w-3xl mx-auto mt-16">
           <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
             Coming Soon
           </h3>
           <div className="grid md:grid-cols-3 gap-3">
             {[
-              { icon: "🌉", title: "Bridge", desc: "CCTP cross-chain transfers" },
-              { icon: "🔄", title: "Swap", desc: "Multi-DEX aggregation" },
+              { icon: "🔄", title: "Multi-Aggregator", desc: "Across, Stargate, LiFi quotes" },
+              { icon: "💱", title: "Swap", desc: "1inch + Jupiter integration" },
               { icon: "📜", title: "Recipes", desc: "Save & schedule routes" },
             ].map((f) => (
               <div
@@ -70,7 +82,7 @@ export default function Home() {
         <p>
           Built with Circle USDC ·{" "}
           <a
-            href="https://github.com"
+            href="https://github.com/Randimt/chain-hopper"
             className="hover:text-zinc-300"
             target="_blank"
             rel="noopener noreferrer"
