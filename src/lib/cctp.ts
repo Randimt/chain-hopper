@@ -2,9 +2,6 @@ import {
   sepolia,
   baseSepolia,
   arbitrumSepolia,
-  optimismSepolia,
-  polygonAmoy,
-  avalancheFuji,
 } from "wagmi/chains";
 
 // CCTP V2 testnet contracts (uniform across all supported testnets)
@@ -17,13 +14,11 @@ export const CCTP_V2_CONTRACTS = {
 
 // CCTP Domain IDs (used in cross-chain messaging encoding)
 // Source: https://developers.circle.com/cctp/cctp-supported-domains
+// Only enabled chains (Sepolia, Base Sepolia, Arbitrum Sepolia)
 export const CCTP_DOMAINS: Record<number, number> = {
   [sepolia.id]: 0,
-  [avalancheFuji.id]: 1,
-  [optimismSepolia.id]: 2,
   [arbitrumSepolia.id]: 3,
   [baseSepolia.id]: 6,
-  [polygonAmoy.id]: 7,
 };
 
 export function chainIdToDomain(chainId: number): number {

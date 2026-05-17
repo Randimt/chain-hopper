@@ -7,9 +7,6 @@ import {
   sepolia,
   baseSepolia,
   arbitrumSepolia,
-  optimismSepolia,
-  polygonAmoy,
-  avalancheFuji,
 } from "wagmi/chains";
 import type { Chain } from "viem";
 import { USDC_ADDRESSES } from "@/lib/wagmi";
@@ -30,9 +27,6 @@ const CHAIN_MAP: Record<number, Chain> = {
   [sepolia.id]: sepolia,
   [baseSepolia.id]: baseSepolia,
   [arbitrumSepolia.id]: arbitrumSepolia,
-  [optimismSepolia.id]: optimismSepolia,
-  [polygonAmoy.id]: polygonAmoy,
-  [avalancheFuji.id]: avalancheFuji,
 };
 
 export type BridgeStatus =

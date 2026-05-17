@@ -6,9 +6,6 @@ import {
   sepolia,
   baseSepolia,
   arbitrumSepolia,
-  optimismSepolia,
-  polygonAmoy,
-  avalancheFuji,
 } from "wagmi/chains";
 
 // Custom chain: Arc Network Testnet (by Circle)
@@ -31,6 +28,8 @@ export const arcTestnet = defineChain({
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo";
 
 // Chain Hopper supported chains — TESTNET ONLY (Phase 1)
+// Active: Sepolia, Base Sepolia, Arbitrum Sepolia, Arc Testnet
+// Disabled (rarely used): Optimism Sepolia, Polygon Amoy, Avalanche Fuji
 export const config = getDefaultConfig({
   appName: "Chain Hopper",
   projectId,
@@ -38,9 +37,6 @@ export const config = getDefaultConfig({
     sepolia,
     baseSepolia,
     arbitrumSepolia,
-    optimismSepolia,
-    polygonAmoy,
-    avalancheFuji,
     arcTestnet,
   ],
   ssr: true,
@@ -53,9 +49,6 @@ export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
   [sepolia.id]: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
   [baseSepolia.id]: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
   [arbitrumSepolia.id]: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-  [optimismSepolia.id]: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
-  [polygonAmoy.id]: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
-  [avalancheFuji.id]: "0x5425890298aed601595a70AB815c96711a31Bc65",
 };
 
 // Arc Testnet uses NATIVE USDC (gas token). Tracked separately via useBalance.
@@ -66,8 +59,5 @@ export const CHAIN_INFO: Record<number, { name: string; logo: string; color: str
   [sepolia.id]: { name: "Sepolia", logo: "🔷", color: "#627EEA", explorer: "https://sepolia.etherscan.io" },
   [baseSepolia.id]: { name: "Base Sepolia", logo: "🔵", color: "#0052FF", explorer: "https://sepolia.basescan.org" },
   [arbitrumSepolia.id]: { name: "Arbitrum Sepolia", logo: "🟣", color: "#28A0F0", explorer: "https://sepolia.arbiscan.io" },
-  [optimismSepolia.id]: { name: "Optimism Sepolia", logo: "🔴", color: "#FF0420", explorer: "https://sepolia-optimism.etherscan.io" },
-  [polygonAmoy.id]: { name: "Polygon Amoy", logo: "🟪", color: "#8247E5", explorer: "https://amoy.polygonscan.com" },
-  [avalancheFuji.id]: { name: "Avalanche Fuji", logo: "🔺", color: "#E84142", explorer: "https://testnet.snowtrace.io" },
   [arcTestnet.id]: { name: "Arc Testnet", logo: "⭕", color: "#00D4FF", explorer: "https://testnet.arcscan.app" },
 };
