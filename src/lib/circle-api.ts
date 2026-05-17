@@ -2,9 +2,11 @@
 // Sandbox endpoint for testnet operations
 // Docs: https://developers.circle.com/cctp/cctp-apis
 
-// Fetch directly from Circle Iris API.
-// Iris supports CORS (access-control-allow-origin: *), so no proxy needed.
+// Direct Iris endpoint — works from server/curl, but some browsers
+// (specific edge regions) hit ERR_CERT_COMMON_NAME_INVALID due to
+// rotating SSL certs at Circle. Fall back to our backend proxy.
 const CIRCLE_IRIS_TESTNET = "https://iris-api-sandbox.circle.com/v2";
+const PROXY_PATH = "/api/iris";
 
 export interface AttestationResponse {
   message: `0x${string}`;
@@ -20,13 +22,51 @@ interface IrisApiMessage {
 }
 
 /**
- * Poll Circle Iris API for attestation after depositForBurn.
- * Returns when attestation is "complete" — message ready for receiveMessage.
- *
- * @param sourceDomain - CCTP domain ID of source chain
- * @param txHash - Transaction hash of depositForBurn
- * @param signal - AbortSignal for cancellation
- * @param onProgress - Callback for status updates
+ * Try direct Iris API first; if it fails (CORS/SSL/network), retry via backend proxy.
+ */
+async function fetchIris(
+  sourceDomain: number,
+  txHash: `0x${string}`,
+  signal?: AbortSignal,
+  preferProxy = false
+): Promise<{ ok: boolean; status: number; data?: { messages?: IrisApiMessage[] }; via: "direct" | "proxy"; error?: string }> {
+  const directUrl = `${CIRCLE_IRIS_TESTNET}/messages/${sourceDomain}?transactionHash=${txHash}`;
+  const proxyUrl = `${PROXY_PATH}?domain=${sourceDomain}&txHash=${txHash}`;
+
+  const tryFetch = async (url: string, label: "direct" | "proxy") => {
+    try {
+      const res = await fetch(url, { signal });
+      if (res.ok) {
+        const data = (await res.json()) as { messages?: IrisApiMessage[] };
+        return { ok: true, status: res.status, data, via: label };
+      }
+      return { ok: false, status: res.status, via: label };
+    } catch (err) {
+      if ((err as Error).name === "AbortError") throw err;
+      return {
+        ok: false,
+        status: 0,
+        via: label,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  };
+
+  if (!preferProxy) {
+    const directResult = await tryFetch(directUrl, "direct");
+    if (directResult.ok || directResult.status >= 400) {
+      // Direct succeeded OR got a real HTTP response (not network failure)
+      return directResult;
+    }
+    // Direct fetch had network/SSL/CORS issue — fall back to proxy
+  }
+
+  return tryFetch(proxyUrl, "proxy");
+}
+
+/**
+ * Poll Iris API for attestation after depositForBurn.
+ * Tries direct fetch first, falls back to backend proxy if browser blocks.
  */
 export async function pollAttestation(
   sourceDomain: number,
@@ -34,48 +74,50 @@ export async function pollAttestation(
   signal?: AbortSignal,
   onProgress?: (status: string, attempt: number) => void
 ): Promise<AttestationResponse> {
-  const url = `${CIRCLE_IRIS_TESTNET}/messages/${sourceDomain}?transactionHash=${txHash}`;
-
   // Poll every 5s, max 20 minutes (240 attempts)
   const MAX_ATTEMPTS = 240;
   const INTERVAL_MS = 5000;
+
+  // Track proxy preference: once we know direct fails, skip retrying it
+  let preferProxy = false;
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     if (signal?.aborted) {
       throw new Error("Attestation polling cancelled");
     }
 
-    try {
-      const res = await fetch(url, { signal });
+    const result = await fetchIris(sourceDomain, txHash, signal, preferProxy);
 
-      if (res.ok) {
-        const data = (await res.json()) as { messages?: IrisApiMessage[] };
-        const message = data.messages?.[0];
+    // Latch to proxy if direct ever fails — avoid retrying broken direct
+    if (!preferProxy && result.via === "proxy") {
+      preferProxy = true;
+      console.info("[Iris] Switched to backend proxy after direct fetch failed");
+    }
 
-        if (message?.status === "complete" && message.message && message.attestation) {
-          return {
-            message: message.message as `0x${string}`,
-            attestation: message.attestation as `0x${string}`,
-            status: "complete",
-          };
-        }
-
-        onProgress?.(message?.status ?? "pending", attempt);
-      } else {
-        // Log non-200 to console for debugging
-        console.warn(`[Iris] HTTP ${res.status} on attempt ${attempt}`, {
-          url,
-          status: res.status,
-          statusText: res.statusText,
-        });
-        onProgress?.(`http_${res.status}`, attempt);
+    if (result.ok && result.data) {
+      const message = result.data.messages?.[0];
+      if (
+        message?.status === "complete" &&
+        message.message &&
+        message.attestation
+      ) {
+        return {
+          message: message.message as `0x${string}`,
+          attestation: message.attestation as `0x${string}`,
+          status: "complete",
+        };
       }
-    } catch (err) {
-      if ((err as Error).name === "AbortError") throw err;
-      // Log network errors to console with details
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.warn(`[Iris] Fetch failed on attempt ${attempt}:`, errMsg, err);
-      onProgress?.(`fetch_error: ${errMsg.slice(0, 50)}`, attempt);
+      onProgress?.(message?.status ?? "pending", attempt);
+    } else {
+      // Surface the actual error to UI for debugging
+      const status = result.error
+        ? `fetch_error (${result.via})`
+        : `http_${result.status} (${result.via})`;
+      console.warn(
+        `[Iris] Attempt ${attempt} failed via ${result.via}:`,
+        result.error || `HTTP ${result.status}`
+      );
+      onProgress?.(status, attempt);
     }
 
     await new Promise((r) => setTimeout(r, INTERVAL_MS));
