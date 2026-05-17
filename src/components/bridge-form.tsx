@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
@@ -8,14 +8,116 @@ import { ChainSelector } from "./chain-selector";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
 
+const STORAGE_KEY = "chain-hopper:pending-bridge";
+
+interface PendingBridge {
+  sourceChain: number;
+  destChain: number;
+  amount: string;
+  burnTxHash: `0x${string}`;
+  timestamp: number;
+}
+
+function loadPendingBridge(address?: string): PendingBridge | null {
+  if (typeof window === "undefined" || !address) return null;
+  try {
+    const raw = localStorage.getItem(`${STORAGE_KEY}:${address.toLowerCase()}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePendingBridge(address: string, data: PendingBridge) {
+  try {
+    localStorage.setItem(
+      `${STORAGE_KEY}:${address.toLowerCase()}`,
+      JSON.stringify(data)
+    );
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function clearPendingBridge(address: string) {
+  try {
+    localStorage.removeItem(`${STORAGE_KEY}:${address.toLowerCase()}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+function shortHash(hash: `0x${string}`) {
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
+}
+
+function TxLink({
+  hash,
+  chainId,
+  label,
+}: {
+  hash: `0x${string}`;
+  chainId: number;
+  label: string;
+}) {
+  const explorer = CHAIN_INFO[chainId]?.explorer;
+  const url = explorer ? `${explorer}/tx/${hash}` : "#";
+  return (
+    <p className="truncate flex items-center gap-2">
+      <span className="text-zinc-500">{label}:</span>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 hover:underline font-mono"
+      >
+        {shortHash(hash)} ↗
+      </a>
+    </p>
+  );
+}
+
 export function BridgeForm() {
   const { address, isConnected } = useAccount();
   const [sourceChain, setSourceChain] = useState<number>(sepolia.id);
   const [destChain, setDestChain] = useState<number>(baseSepolia.id);
   const [amount, setAmount] = useState<string>("");
-  const { state, approve, bridge, reset } = useBridge();
+  const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
+  const { state, approve, bridge, resume, reset } = useBridge();
 
-  // Auto-flip dest if user picks same chain as source
+  // Load pending bridge from localStorage on mount / wallet change
+  useEffect(() => {
+    if (!address) {
+      setPendingBridge(null);
+      return;
+    }
+    const pending = loadPendingBridge(address);
+    setPendingBridge(pending);
+  }, [address]);
+
+  // Save burn tx to localStorage as soon as it lands
+  useEffect(() => {
+    if (state.burnTxHash && address && !pendingBridge) {
+      const data: PendingBridge = {
+        sourceChain,
+        destChain,
+        amount,
+        burnTxHash: state.burnTxHash,
+        timestamp: Date.now(),
+      };
+      savePendingBridge(address, data);
+      setPendingBridge(data);
+    }
+  }, [state.burnTxHash, address, pendingBridge, sourceChain, destChain, amount]);
+
+  // Clear pending after successful complete
+  useEffect(() => {
+    if (state.status === "complete" && address) {
+      clearPendingBridge(address);
+      setPendingBridge(null);
+    }
+  }, [state.status, address]);
+
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
     if (chainId === destChain) {
@@ -25,7 +127,6 @@ export function BridgeForm() {
     }
   };
 
-  // Read source chain balance for "Max" button + validation
   const { data: balanceRaw } = useReadContract({
     address: USDC_ADDRESSES[sourceChain],
     abi: erc20Abi,
@@ -54,7 +155,6 @@ export function BridgeForm() {
   const sourceInfo = CHAIN_INFO[sourceChain];
   const destInfo = CHAIN_INFO[destChain];
 
-  // Button state derived from bridge hook status
   const status = state.status;
   const isApproving = status === "approving";
   const isApproved = status === "approved";
@@ -71,11 +171,78 @@ export function BridgeForm() {
 
   const handleApprove = () => approve({ sourceChain });
   const handleBridge = () => bridge({ sourceChain, destChain, amount });
+  const handleResume = () => {
+    if (!pendingBridge) return;
+    resume({
+      sourceChain: pendingBridge.sourceChain,
+      destChain: pendingBridge.destChain,
+      burnTxHash: pendingBridge.burnTxHash,
+    });
+  };
+  const handleDiscardPending = () => {
+    if (!address) return;
+    clearPendingBridge(address);
+    setPendingBridge(null);
+    reset();
+  };
 
   if (!isConnected) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 text-center">
         <p className="text-zinc-400">Connect your wallet to start bridging</p>
+      </div>
+    );
+  }
+
+  // RESUME UI: pending bridge detected
+  if (pendingBridge && status === "idle") {
+    const pendingSource = CHAIN_INFO[pendingBridge.sourceChain];
+    const pendingDest = CHAIN_INFO[pendingBridge.destChain];
+    const minutesAgo = Math.round((Date.now() - pendingBridge.timestamp) / 60000);
+    return (
+      <div className="rounded-xl border border-amber-900/50 bg-amber-950/10 p-6 space-y-4">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-amber-300">⚠ Pending Bridge Detected</p>
+          <p className="text-xs text-zinc-400">
+            You have an unfinished bridge from {minutesAgo} minute(s) ago.
+            Resume to claim your USDC on {pendingDest.name}.
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">From</span>
+            <span className="text-zinc-300">{pendingSource.logo} {pendingSource.name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">To</span>
+            <span className="text-zinc-300">{pendingDest.logo} {pendingDest.name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Amount</span>
+            <span className="text-zinc-300 tabular-nums">{pendingBridge.amount} USDC</span>
+          </div>
+          <TxLink
+            hash={pendingBridge.burnTxHash}
+            chainId={pendingBridge.sourceChain}
+            label="Burn"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <button
+            onClick={handleResume}
+            className="w-full rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium py-3 px-4 text-sm transition-colors"
+          >
+            Resume Bridge → Claim on {pendingDest.name}
+          </button>
+          <button
+            onClick={handleDiscardPending}
+            className="w-full rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-300 font-medium py-2 px-4 text-xs transition-colors"
+          >
+            Discard (claim manually later)
+          </button>
+        </div>
       </div>
     );
   }
@@ -246,32 +413,29 @@ export function BridgeForm() {
         )}
       </div>
 
-      {/* Tx hash links */}
+      {/* Tx hash links — clickable to explorer */}
       {(state.approveTxHash || state.burnTxHash || state.mintTxHash) && (
-        <div className="text-xs text-zinc-500 space-y-1 pt-2 border-t border-zinc-800/50">
+        <div className="text-xs space-y-1 pt-2 border-t border-zinc-800/50">
           {state.approveTxHash && (
-            <p className="truncate">
-              Approve:{" "}
-              <span className="text-zinc-400 font-mono">
-                {state.approveTxHash.slice(0, 10)}...{state.approveTxHash.slice(-8)}
-              </span>
-            </p>
+            <TxLink
+              hash={state.approveTxHash}
+              chainId={sourceChain}
+              label="Approve"
+            />
           )}
           {state.burnTxHash && (
-            <p className="truncate">
-              Burn:{" "}
-              <span className="text-zinc-400 font-mono">
-                {state.burnTxHash.slice(0, 10)}...{state.burnTxHash.slice(-8)}
-              </span>
-            </p>
+            <TxLink
+              hash={state.burnTxHash}
+              chainId={sourceChain}
+              label="Burn"
+            />
           )}
           {state.mintTxHash && (
-            <p className="truncate">
-              Mint:{" "}
-              <span className="text-zinc-400 font-mono">
-                {state.mintTxHash.slice(0, 10)}...{state.mintTxHash.slice(-8)}
-              </span>
-            </p>
+            <TxLink
+              hash={state.mintTxHash}
+              chainId={destChain}
+              label="Mint"
+            />
           )}
         </div>
       )}

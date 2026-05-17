@@ -62,12 +62,12 @@ export const USDC_ADDRESSES: Record<number, `0x${string}`> = {
 export const ARC_TESTNET_CHAIN_ID = arcTestnet.id;
 
 // Chain metadata for UI
-export const CHAIN_INFO: Record<number, { name: string; logo: string; color: string }> = {
-  [sepolia.id]: { name: "Sepolia", logo: "🔷", color: "#627EEA" },
-  [baseSepolia.id]: { name: "Base Sepolia", logo: "🔵", color: "#0052FF" },
-  [arbitrumSepolia.id]: { name: "Arbitrum Sepolia", logo: "🟣", color: "#28A0F0" },
-  [optimismSepolia.id]: { name: "Optimism Sepolia", logo: "🔴", color: "#FF0420" },
-  [polygonAmoy.id]: { name: "Polygon Amoy", logo: "🟪", color: "#8247E5" },
-  [avalancheFuji.id]: { name: "Avalanche Fuji", logo: "🔺", color: "#E84142" },
-  [arcTestnet.id]: { name: "Arc Testnet", logo: "⭕", color: "#00D4FF" },
+export const CHAIN_INFO: Record<number, { name: string; logo: string; color: string; explorer: string }> = {
+  [sepolia.id]: { name: "Sepolia", logo: "🔷", color: "#627EEA", explorer: "https://sepolia.etherscan.io" },
+  [baseSepolia.id]: { name: "Base Sepolia", logo: "🔵", color: "#0052FF", explorer: "https://sepolia.basescan.org" },
+  [arbitrumSepolia.id]: { name: "Arbitrum Sepolia", logo: "🟣", color: "#28A0F0", explorer: "https://sepolia.arbiscan.io" },
+  [optimismSepolia.id]: { name: "Optimism Sepolia", logo: "🔴", color: "#FF0420", explorer: "https://sepolia-optimism.etherscan.io" },
+  [polygonAmoy.id]: { name: "Polygon Amoy", logo: "🟪", color: "#8247E5", explorer: "https://amoy.polygonscan.com" },
+  [avalancheFuji.id]: { name: "Avalanche Fuji", logo: "🔺", color: "#E84142", explorer: "https://testnet.snowtrace.io" },
+  [arcTestnet.id]: { name: "Arc Testnet", logo: "⭕", color: "#00D4FF", explorer: "https://testnet.arcscan.app" },
 };

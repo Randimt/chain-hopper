@@ -40,6 +40,12 @@ interface UseBridgeArgs {
   amount: string; // human-readable, e.g. "10.5"
 }
 
+interface ResumeBridgeArgs {
+  sourceChain: number;
+  destChain: number;
+  burnTxHash: `0x${string}`;
+}
+
 const initialState: BridgeState = { status: "idle" };
 
 export function useBridge() {
@@ -197,5 +203,63 @@ export function useBridge() {
     [address, walletClient, publicClient, switchChainAsync]
   );
 
-  return { state, approve, bridge, reset };
+  // Resume an interrupted bridge: skip burn, jump to attestation poll + mint
+  const resume = useCallback(
+    async ({ sourceChain, destChain, burnTxHash }: ResumeBridgeArgs) => {
+      if (!address || !walletClient || !publicClient) {
+        setState({ status: "error", errorMessage: "Wallet not connected" });
+        return;
+      }
+
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+
+      try {
+        // Restore burn tx hash to state
+        setState({ status: "attesting", burnTxHash });
+
+        // Poll attestation
+        const sourceDomain = chainIdToDomain(sourceChain);
+        const attestation = await pollAttestation(
+          sourceDomain,
+          burnTxHash,
+          abortController.signal,
+          (status) => setState((s) => ({ ...s, attestationStatus: status }))
+        );
+
+        // Mint on destination
+        setState((s) => ({ ...s, status: "minting" }));
+
+        if (walletClient.chain?.id !== destChain) {
+          await switchChainAsync({ chainId: destChain });
+        }
+
+        const mintTxHash = await walletClient.writeContract({
+          address: CCTP_V2_CONTRACTS.messageTransmitter,
+          abi: MESSAGE_TRANSMITTER_V2_ABI,
+          functionName: "receiveMessage",
+          args: [attestation.message, attestation.attestation],
+          chain: walletClient.chain,
+          account: address,
+        });
+
+        setState((s) => ({ ...s, mintTxHash }));
+        await publicClient.waitForTransactionReceipt({ hash: mintTxHash });
+
+        setState((s) => ({ ...s, status: "complete" }));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        setState((s) => ({
+          ...s,
+          status: "error",
+          errorMessage: msg.includes("User rejected") ? "Transaction rejected" : msg,
+        }));
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [address, walletClient, publicClient, switchChainAsync]
+  );
+
+  return { state, approve, bridge, resume, reset };
 }
