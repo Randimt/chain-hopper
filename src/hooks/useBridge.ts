@@ -3,6 +3,15 @@
 import { useState, useCallback, useRef } from "react";
 import { useAccount, useSwitchChain, usePublicClient, useWalletClient } from "wagmi";
 import { parseUnits, erc20Abi, maxUint256 } from "viem";
+import {
+  sepolia,
+  baseSepolia,
+  arbitrumSepolia,
+  optimismSepolia,
+  polygonAmoy,
+  avalancheFuji,
+} from "wagmi/chains";
+import type { Chain } from "viem";
 import { USDC_ADDRESSES } from "@/lib/wagmi";
 import {
   CCTP_V2_CONTRACTS,
@@ -14,6 +23,17 @@ import {
   FINALITY_FAST,
 } from "@/lib/cctp";
 import { pollAttestation } from "@/lib/circle-api";
+
+// Resolve a Chain object by chain id — used to pass explicit chain to writeContract
+// (walletClient.chain is stale right after switchChainAsync, so we can't trust it)
+const CHAIN_MAP: Record<number, Chain> = {
+  [sepolia.id]: sepolia,
+  [baseSepolia.id]: baseSepolia,
+  [arbitrumSepolia.id]: arbitrumSepolia,
+  [optimismSepolia.id]: optimismSepolia,
+  [polygonAmoy.id]: polygonAmoy,
+  [avalancheFuji.id]: avalancheFuji,
+};
 
 export type BridgeStatus =
   | "idle"
@@ -89,7 +109,7 @@ export function useBridge() {
           abi: erc20Abi,
           functionName: "approve",
           args: [CCTP_V2_CONTRACTS.tokenMessenger, maxUint256],
-          chain: walletClient.chain,
+          chain: CHAIN_MAP[sourceChain],
           account: address,
         });
 
@@ -149,7 +169,7 @@ export function useBridge() {
             maxFee,
             FINALITY_FAST,
           ],
-          chain: walletClient.chain,
+          chain: CHAIN_MAP[sourceChain],
           account: address,
         });
 
@@ -179,7 +199,7 @@ export function useBridge() {
           abi: MESSAGE_TRANSMITTER_V2_ABI,
           functionName: "receiveMessage",
           args: [attestation.message, attestation.attestation],
-          chain: walletClient.chain,
+          chain: CHAIN_MAP[destChain],
           account: address,
         });
 
@@ -239,7 +259,7 @@ export function useBridge() {
           abi: MESSAGE_TRANSMITTER_V2_ABI,
           functionName: "receiveMessage",
           args: [attestation.message, attestation.attestation],
-          chain: walletClient.chain,
+          chain: CHAIN_MAP[destChain],
           account: address,
         });
 
