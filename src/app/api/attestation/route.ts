@@ -3,25 +3,26 @@ import { NextRequest, NextResponse } from "next/server";
 // Cloudflare Workers requirement
 export const runtime = "edge";
 
-// Catch-all proxy: /api/attestation/{domain}/{txHash}
-// Parses URL path manually to avoid dynamic-route param edge cases on OpenNext.
+/**
+ * Proxy Circle Iris API to bypass browser CORS.
+ * Usage: GET /api/attestation?domain=0&txHash=0x...
+ *
+ * Flat route (no dynamic segments) for OpenNext compatibility.
+ */
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  // Path shape: /api/attestation/<domain>/<txHash>
-  const parts = url.pathname.split("/").filter(Boolean);
-  // parts[0]=api, parts[1]=attestation, parts[2]=domain, parts[3]=txHash
-  const domain = parts[2];
-  const txHash = parts[3];
+  const { searchParams } = new URL(req.url);
+  const domain = searchParams.get("domain");
+  const txHash = searchParams.get("txHash");
 
   if (!domain || !/^\d+$/.test(domain)) {
     return NextResponse.json(
-      { error: "Invalid domain", got: domain },
+      { error: "Invalid or missing 'domain' query param" },
       { status: 400 }
     );
   }
   if (!txHash || !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
     return NextResponse.json(
-      { error: "Invalid txHash", got: txHash?.slice(0, 16) },
+      { error: "Invalid or missing 'txHash' query param" },
       { status: 400 }
     );
   }
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!res.ok) {
-      // 404 means message not yet indexed by Circle — pass through with empty messages
+      // 404 = not yet indexed — pass through with empty messages
       if (res.status === 404) {
         return NextResponse.json(
           { messages: [], _proxyStatus: "not_indexed" },

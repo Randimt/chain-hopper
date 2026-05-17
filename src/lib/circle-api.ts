@@ -34,7 +34,7 @@ export async function pollAttestation(
   signal?: AbortSignal,
   onProgress?: (status: string, attempt: number) => void
 ): Promise<AttestationResponse> {
-  const url = `${PROXY_BASE}/${sourceDomain}/${txHash}`;
+  const url = `${PROXY_BASE}?domain=${sourceDomain}&txHash=${txHash}`;
 
   // Poll every 5s, max 20 minutes (240 attempts)
   const MAX_ATTEMPTS = 240;
