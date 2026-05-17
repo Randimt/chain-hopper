@@ -2,7 +2,9 @@
 // Sandbox endpoint for testnet operations
 // Docs: https://developers.circle.com/cctp/cctp-apis
 
-const CIRCLE_IRIS_TESTNET = "https://iris-api-sandbox.circle.com/v2";
+// Use local Next.js API proxy to bypass CORS (Circle Iris doesn't support browser fetch)
+// Proxy implementation: src/app/api/attestation/[domain]/[txHash]/route.ts
+const PROXY_BASE = "/api/attestation";
 
 export interface AttestationResponse {
   message: `0x${string}`;
@@ -32,7 +34,7 @@ export async function pollAttestation(
   signal?: AbortSignal,
   onProgress?: (status: string, attempt: number) => void
 ): Promise<AttestationResponse> {
-  const url = `${CIRCLE_IRIS_TESTNET}/messages/${sourceDomain}?transactionHash=${txHash}`;
+  const url = `${PROXY_BASE}/${sourceDomain}/${txHash}`;
 
   // Poll every 5s, max 20 minutes (240 attempts)
   const MAX_ATTEMPTS = 240;
