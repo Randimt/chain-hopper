@@ -1,0 +1,6 @@
+onlyBuiltDependencies:
+  - sharp
+  - keccak
+  - unrs-resolver
+  - bufferutil
+  - utf-8-validate
