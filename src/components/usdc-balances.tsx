@@ -1,21 +1,22 @@
 "use client";
 
-import { useAccount, useReadContracts, useBalance } from "wagmi";
+import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
-import { USDC_ADDRESSES, CHAIN_INFO, ARC_TESTNET_CHAIN_ID } from "@/lib/wagmi";
+import { USDC_ADDRESSES, CHAIN_INFO } from "@/lib/wagmi";
 
-const ERC20_CHAIN_IDS = Object.keys(USDC_ADDRESSES).map(Number);
+const CHAIN_IDS = Object.keys(USDC_ADDRESSES).map(Number);
 
 export function UsdcBalances() {
   const { address, isConnected } = useAccount();
 
-  // Read USDC balance on 6 ERC20 testnet chains via multicall
+  // Read USDC balance on all testnet chains via multicall.
+  // All chains (including Arc) expose ERC20 balanceOf with 6 decimals.
   const {
-    data: erc20Data,
-    isLoading: erc20Loading,
-    error: erc20Error,
+    data,
+    isLoading,
+    error,
   } = useReadContracts({
-    contracts: ERC20_CHAIN_IDS.map((chainId) => ({
+    contracts: CHAIN_IDS.map((chainId) => ({
       address: USDC_ADDRESSES[chainId],
       abi: erc20Abi,
       functionName: "balanceOf",
@@ -27,24 +28,6 @@ export function UsdcBalances() {
       refetchInterval: 30_000,
     },
   });
-
-  // Arc Testnet USDC = native gas token (not ERC20)
-  // Use useBalance for native currency balance
-  const {
-    data: arcBalance,
-    isLoading: arcLoading,
-    error: arcError,
-  } = useBalance({
-    address,
-    chainId: ARC_TESTNET_CHAIN_ID,
-    query: {
-      enabled: isConnected && !!address,
-      refetchInterval: 30_000,
-    },
-  });
-
-  const isLoading = erc20Loading || arcLoading;
-  const error = erc20Error || arcError;
 
   if (!isConnected) {
     return (
@@ -70,23 +53,14 @@ export function UsdcBalances() {
     );
   }
 
-  // 6 ERC20 testnet chains (USDC = 6 decimals)
-  const erc20Balances = ERC20_CHAIN_IDS.map((chainId, i) => {
-    const result = erc20Data?.[i];
+  // All chains use ERC20 USDC with 6 decimals (CCTP standard).
+  const balances = CHAIN_IDS.map((chainId, i) => {
+    const result = data?.[i];
     const raw = result?.status === "success" ? (result.result as bigint) : BigInt(0);
     const formatted = parseFloat(formatUnits(raw, 6));
     return { chainId, balance: formatted, info: CHAIN_INFO[chainId] };
   });
 
-  // Arc Testnet — native USDC (18 decimals, like ETH)
-  const arcFormatted = arcBalance ? parseFloat(formatUnits(arcBalance.value, 18)) : 0;
-  const arcEntry = {
-    chainId: ARC_TESTNET_CHAIN_ID,
-    balance: arcFormatted,
-    info: CHAIN_INFO[ARC_TESTNET_CHAIN_ID],
-  };
-
-  const balances = [...erc20Balances, arcEntry];
   const total = balances.reduce((sum, b) => sum + b.balance, 0);
 
   return (
@@ -114,9 +88,7 @@ export function UsdcBalances() {
             <p className="mt-2 text-xl font-semibold tabular-nums">
               {balance.toFixed(2)}
             </p>
-            <p className="text-xs text-zinc-500">
-              USDC{chainId === ARC_TESTNET_CHAIN_ID && " (native)"}
-            </p>
+            <p className="text-xs text-zinc-500">USDC</p>
           </div>
         ))}
       </div>

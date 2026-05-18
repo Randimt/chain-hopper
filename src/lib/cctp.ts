@@ -3,6 +3,7 @@ import {
   baseSepolia,
   arbitrumSepolia,
 } from "wagmi/chains";
+import { arcTestnet } from "./wagmi";
 
 // CCTP V2 testnet contracts (uniform across all supported testnets)
 // Source: https://developers.circle.com/cctp/v2-evm-smart-contracts
@@ -13,12 +14,13 @@ export const CCTP_V2_CONTRACTS = {
 } as const;
 
 // CCTP Domain IDs (used in cross-chain messaging encoding)
-// Source: https://developers.circle.com/cctp/cctp-supported-domains
-// Only enabled chains (Sepolia, Base Sepolia, Arbitrum Sepolia)
+// Source: https://developers.circle.com/cctp/concepts/supported-chains-and-domains
+// Active chains: Sepolia, Base Sepolia, Arbitrum Sepolia, Arc Testnet
 export const CCTP_DOMAINS: Record<number, number> = {
   [sepolia.id]: 0,
   [arbitrumSepolia.id]: 3,
   [baseSepolia.id]: 6,
+  [arcTestnet.id]: 26,
 };
 
 export function chainIdToDomain(chainId: number): number {

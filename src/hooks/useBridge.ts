@@ -8,6 +8,7 @@ import {
   baseSepolia,
   arbitrumSepolia,
 } from "wagmi/chains";
+import { arcTestnet } from "@/lib/wagmi";
 import type { Chain } from "viem";
 import { USDC_ADDRESSES } from "@/lib/wagmi";
 import {
@@ -27,6 +28,7 @@ const CHAIN_MAP: Record<number, Chain> = {
   [sepolia.id]: sepolia,
   [baseSepolia.id]: baseSepolia,
   [arbitrumSepolia.id]: arbitrumSepolia,
+  [arcTestnet.id]: arcTestnet,
 };
 
 export type BridgeStatus =

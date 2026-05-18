@@ -1,12 +1,11 @@
 "use client";
 
-import { CHAIN_INFO, ARC_TESTNET_CHAIN_ID, USDC_ADDRESSES } from "@/lib/wagmi";
+import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 
 interface ChainSelectorProps {
   value: number;
   onChange: (chainId: number) => void;
   exclude?: number;
-  excludeArc?: boolean;
   label?: string;
 }
 
@@ -14,14 +13,12 @@ export function ChainSelector({
   value,
   onChange,
   exclude,
-  excludeArc = true,
   label,
 }: ChainSelectorProps) {
-  // Bridge form: only ERC20 USDC chains (exclude Arc native)
+  // Bridge form: all CCTP-supported chains (including Arc).
   const availableChainIds = Object.keys(USDC_ADDRESSES)
     .map(Number)
     .filter((id) => {
-      if (excludeArc && id === ARC_TESTNET_CHAIN_ID) return false;
       if (exclude && id === exclude) return false;
       return true;
     });
