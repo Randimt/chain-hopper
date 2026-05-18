@@ -2,7 +2,7 @@
 
 export default function SwapPage() {
   return (
-    <div className="px-4 sm:px-8 lg:px-12 py-6 lg:py-10 max-w-6xl">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
       <header className="mb-8">
         <h1 className="text-3xl font-bold mb-1">Swap</h1>
         <p className="text-zinc-500 text-sm">Coming in Phase 2</p>

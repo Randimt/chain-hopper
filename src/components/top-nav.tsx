@@ -32,7 +32,7 @@ export function TopNav() {
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-xl bg-zinc-950/80 border-b border-white/[0.08]">
-      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Left: Logo + Nav links */}
         <div className="flex items-center gap-8 lg:gap-10 min-w-0">
           <Link

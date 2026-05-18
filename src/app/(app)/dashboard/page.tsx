@@ -125,7 +125,7 @@ export default function DashboardPage() {
 
   if (!isConnected) {
     return (
-      <div className="px-4 sm:px-8 lg:px-12 py-8 max-w-6xl">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center py-16">
           <div className="text-6xl mb-4">👋</div>
           <h1 className="text-3xl font-bold mb-2">Welcome to Chain Hopper</h1>
@@ -145,7 +145,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="px-4 sm:px-8 lg:px-12 py-6 lg:py-10 max-w-6xl">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold mb-1">Dashboard</h1>
