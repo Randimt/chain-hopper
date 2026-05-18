@@ -139,7 +139,30 @@ export async function getRelayQuote(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      return failedQuote("relay", request, `HTTP ${res.status}: ${text.slice(0, 100)}`);
+      // Relay returns errors as JSON: { message, errorCode, requestId }
+      let friendlyMsg = `HTTP ${res.status}`;
+      try {
+        const errData = JSON.parse(text) as {
+          message?: string;
+          errorCode?: string;
+        };
+        if (errData.message) {
+          friendlyMsg = errData.message;
+        } else if (errData.errorCode) {
+          // Fallback: humanize common error codes
+          const codeMap: Record<string, string> = {
+            INSUFFICIENT_LIQUIDITY: "Insufficient liquidity for this amount",
+            AMOUNT_TOO_LOW: "Amount is too low for Relay",
+            UNSUPPORTED_ROUTE: "Route not supported by Relay",
+            INVALID_INPUT: "Invalid bridge parameters",
+          };
+          friendlyMsg = codeMap[errData.errorCode] || errData.errorCode;
+        }
+      } catch {
+        // Body wasn't JSON, fallback to truncated text
+        if (text) friendlyMsg = `${friendlyMsg}: ${text.slice(0, 100)}`;
+      }
+      return failedQuote("relay", request, friendlyMsg);
     }
 
     const data = (await res.json()) as RelayQuoteResponse;
