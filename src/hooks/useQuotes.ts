@@ -62,6 +62,7 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
       };
       const res = await getAllQuotes(reqWithSlippage, {
         enabledProviders: settings.enabledProviders,
+        experimentalRoutes: settings.experimentalRoutes,
       });
       // Only update if request hasn't changed since fetch started
       const currentKey = `${req.sourceChain}-${req.destChain}-${req.amountIn}-${req.sender || ""}`;

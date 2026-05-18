@@ -16,6 +16,8 @@ export interface BridgeSettings {
   enabledProviders: Record<QuoteProvider, boolean>;
   /** Quote auto-refresh interval in seconds (0 = manual only) */
   autoRefreshSec: number;
+  /** Show alternative routes (Relay, Across, LiFi). Default OFF — testnet liquidity unreliable */
+  experimentalRoutes: boolean;
 }
 
 export const DEFAULT_SETTINGS: BridgeSettings = {
@@ -28,6 +30,7 @@ export const DEFAULT_SETTINGS: BridgeSettings = {
     lifi: false, // off by default — mainnet only on testnet
   },
   autoRefreshSec: 30,
+  experimentalRoutes: false, // default: clean CCTP-only UX
 };
 
 const STORAGE_KEY = "plix:settings";
@@ -47,6 +50,8 @@ export function loadSettings(): BridgeSettings {
         ...(parsed.enabledProviders ?? {}),
       },
       autoRefreshSec: parsed.autoRefreshSec ?? DEFAULT_SETTINGS.autoRefreshSec,
+      experimentalRoutes:
+        parsed.experimentalRoutes ?? DEFAULT_SETTINGS.experimentalRoutes,
     };
   } catch {
     return DEFAULT_SETTINGS;

@@ -152,6 +152,79 @@ export function QuoteList({
     return null;
   }
 
+  // Single-quote layout (CCTP-only mode) — clean inline summary, no card grid
+  if (quotes.length === 1) {
+    const quote = quotes[0];
+    const info = PROVIDER_INFO[quote.provider];
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+            Bridge Quote
+          </div>
+          {isLoading && (
+            <div className="text-xs text-zinc-500 flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-zinc-700 border-t-cyan-400 animate-spin"></span>
+              Updating
+            </div>
+          )}
+        </div>
+        <div className="p-4 border border-zinc-800 rounded-xl bg-zinc-900/40 space-y-2">
+          <div className="flex items-center gap-2 mb-3">
+            <span
+              className={`text-xs font-mono uppercase px-2 py-0.5 rounded border ${info.badgeColor}`}
+            >
+              {info.shortName}
+            </span>
+            <span className="text-sm text-zinc-200">{info.name}</span>
+          </div>
+          {quote.status === "available" && (
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">You receive</span>
+                <span className="text-zinc-100 font-medium">
+                  {Number(quote.amountOutFormatted).toFixed(4)} USDC
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Fee</span>
+                <span className="text-zinc-300">
+                  {quote.feeUsdc
+                    ? `${Number(quote.feeUsdc).toFixed(4)} USDC`
+                    : "--"}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">ETA</span>
+                <span className="text-zinc-300">
+                  {formatEta(quote.etaSeconds)}
+                </span>
+              </div>
+            </div>
+          )}
+          {quote.status === "no_route" && (
+            <div className="text-sm text-zinc-500 italic">
+              {quote.errorMessage || "No route available for this pair"}
+            </div>
+          )}
+          {quote.status === "failed" && (
+            <div className="text-sm text-red-400/80">
+              {quote.errorMessage || "Quote failed"}
+            </div>
+          )}
+          {quote.status === "loading" && (
+            <div className="text-sm text-zinc-500 flex items-center gap-2">
+              <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 border-t-cyan-400 animate-spin"></span>
+              Fetching quote...
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Multi-quote layout (experimental mode) — 3-up grid for comparison
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between mb-1">

@@ -132,6 +132,38 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
         </div>
 
         <div className="p-6 space-y-8">
+          {/* Experimental Routes Toggle */}
+          <section className="space-y-3">
+            <label className="flex items-start gap-3 p-4 rounded-md border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={settings.experimentalRoutes}
+                onChange={() =>
+                  updateSettings({
+                    experimentalRoutes: !settings.experimentalRoutes,
+                  })
+                }
+                className="mt-1 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500/30"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-zinc-100">
+                    Show alternative routes
+                  </span>
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-300">
+                    Experimental
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                  Enable Relay, Across, and LiFi for route comparison. Testnet
+                  liquidity is unreliable — most routes will say{" "}
+                  <span className="text-zinc-300">no route</span> or have low max
+                  amounts. Stable on mainnet.
+                </p>
+              </div>
+            </label>
+          </section>
+
           {/* Slippage */}
           <section className="space-y-3">
             <div className="flex items-baseline justify-between">
@@ -215,52 +247,54 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
             </p>
           </section>
 
-          {/* Provider Preferences */}
-          <section className="space-y-3">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500">
-              Bridge Providers
-            </h3>
-            <div className="space-y-2">
-              {(["cctp", "relay", "across", "lifi"] as QuoteProvider[]).map(
-                (provider) => {
-                  const info = PROVIDER_INFO[provider];
-                  const enabled = settings.enabledProviders[provider];
-                  return (
-                    <label
-                      key={provider}
-                      className="flex items-center gap-3 p-3 rounded-md border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={() => toggleProvider(provider)}
-                        className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${info.badgeColor}`}
-                          >
-                            {info.shortName}
-                          </span>
-                          <span className="text-sm text-zinc-200 truncate">
-                            {info.name}
-                          </span>
+          {/* Provider Preferences (only when experimental routes enabled) */}
+          {settings.experimentalRoutes && (
+            <section className="space-y-3">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500">
+                Bridge Providers
+              </h3>
+              <div className="space-y-2">
+                {(["cctp", "relay", "across", "lifi"] as QuoteProvider[]).map(
+                  (provider) => {
+                    const info = PROVIDER_INFO[provider];
+                    const enabled = settings.enabledProviders[provider];
+                    return (
+                      <label
+                        key={provider}
+                        className="flex items-center gap-3 p-3 rounded-md border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={() => toggleProvider(provider)}
+                          className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-cyan-500 focus:ring-cyan-500/30"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${info.badgeColor}`}
+                            >
+                              {info.shortName}
+                            </span>
+                            <span className="text-sm text-zinc-200 truncate">
+                              {info.name}
+                            </span>
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-0.5">
+                            {info.description}
+                          </div>
                         </div>
-                        <div className="text-xs text-zinc-500 mt-0.5">
-                          {info.description}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                },
-              )}
-            </div>
-            <p className="text-xs text-zinc-500 leading-relaxed">
-              Disabled providers won&apos;t appear in route comparison. CCTP is
-              recommended for the broadest chain coverage.
-            </p>
-          </section>
+                      </label>
+                    );
+                  },
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Disabled providers won&apos;t appear in route comparison. CCTP
+                always remains active.
+              </p>
+            </section>
+          )}
 
           {/* Quote Auto-Refresh */}
           <section className="space-y-3">

@@ -12,6 +12,8 @@ const QUOTE_TIMEOUT_MS = 8000;
 
 export interface AggregatorOptions {
   enabledProviders?: Record<QuoteProvider, boolean>;
+  /** Show alternative routes (Relay, Across, LiFi). When false, only CCTP is fetched. */
+  experimentalRoutes?: boolean;
 }
 
 /**
@@ -28,39 +30,41 @@ export async function getAllQuotes(
     across: true,
     lifi: false,
   };
+  const experimental = options.experimentalRoutes ?? false;
 
   const quotePromises: Promise<Quote>[] = [];
 
-  // CCTP is sync (deterministic, no API)
+  // CCTP is sync (deterministic, no API) — always fetched
   if (enabled.cctp) {
     quotePromises.push(Promise.resolve(getCctpQuote(request)));
   }
 
-  // Relay needs API call with timeout
-  if (enabled.relay) {
-    const relayController = new AbortController();
-    const relayTimer = setTimeout(() => relayController.abort(), QUOTE_TIMEOUT_MS);
-    quotePromises.push(
-      getRelayQuote(request, relayController.signal).finally(() =>
-        clearTimeout(relayTimer),
-      ),
-    );
-  }
+  // Alternative routes: only fetched if experimental mode is enabled.
+  // Testnet liquidity for Relay/Across/LiFi is unreliable, so default UX is CCTP-only.
+  if (experimental) {
+    if (enabled.relay) {
+      const relayController = new AbortController();
+      const relayTimer = setTimeout(() => relayController.abort(), QUOTE_TIMEOUT_MS);
+      quotePromises.push(
+        getRelayQuote(request, relayController.signal).finally(() =>
+          clearTimeout(relayTimer),
+        ),
+      );
+    }
 
-  // Across needs API call with timeout
-  if (enabled.across) {
-    const acrossController = new AbortController();
-    const acrossTimer = setTimeout(() => acrossController.abort(), QUOTE_TIMEOUT_MS);
-    quotePromises.push(
-      getAcrossQuote(request, acrossController.signal).finally(() =>
-        clearTimeout(acrossTimer),
-      ),
-    );
-  }
+    if (enabled.across) {
+      const acrossController = new AbortController();
+      const acrossTimer = setTimeout(() => acrossController.abort(), QUOTE_TIMEOUT_MS);
+      quotePromises.push(
+        getAcrossQuote(request, acrossController.signal).finally(() =>
+          clearTimeout(acrossTimer),
+        ),
+      );
+    }
 
-  // LiFi placeholder (no real call — testnet liquidity is mainnet-only)
-  if (enabled.lifi) {
-    quotePromises.push(getLifiQuote(request));
+    if (enabled.lifi) {
+      quotePromises.push(getLifiQuote(request));
+    }
   }
 
   const quotes = await Promise.all(quotePromises);
