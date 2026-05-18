@@ -269,6 +269,10 @@ export async function pollAcrossStatus(
 
 /**
  * Across SpokePool depositV3 ABI (subset)
+ *
+ * Note: Across has shipped multiple event versions over time.
+ * We include all known variants so depositId extraction works against
+ * any deployed SpokePool (V3 legacy, V3 universal w/ bytes32, etc.)
  */
 export const SPOKE_POOL_ABI = [
   {
@@ -291,6 +295,7 @@ export const SPOKE_POOL_ABI = [
     ],
     outputs: [],
   },
+  // V3 legacy event (uint32 depositId, address fields)
   {
     type: "event",
     name: "V3FundsDeposited",
@@ -307,6 +312,26 @@ export const SPOKE_POOL_ABI = [
       { name: "depositor", type: "address", indexed: true },
       { name: "recipient", type: "address", indexed: false },
       { name: "exclusiveRelayer", type: "address", indexed: false },
+      { name: "message", type: "bytes", indexed: false },
+    ],
+  },
+  // V3 universal event (uint256 depositId, bytes32 cross-VM fields)
+  {
+    type: "event",
+    name: "FundsDeposited",
+    inputs: [
+      { name: "inputToken", type: "bytes32", indexed: false },
+      { name: "outputToken", type: "bytes32", indexed: false },
+      { name: "inputAmount", type: "uint256", indexed: false },
+      { name: "outputAmount", type: "uint256", indexed: false },
+      { name: "destinationChainId", type: "uint256", indexed: true },
+      { name: "depositId", type: "uint256", indexed: true },
+      { name: "quoteTimestamp", type: "uint32", indexed: false },
+      { name: "fillDeadline", type: "uint32", indexed: false },
+      { name: "exclusivityDeadline", type: "uint32", indexed: false },
+      { name: "depositor", type: "bytes32", indexed: true },
+      { name: "recipient", type: "bytes32", indexed: false },
+      { name: "exclusiveRelayer", type: "bytes32", indexed: false },
       { name: "message", type: "bytes", indexed: false },
     ],
   },
