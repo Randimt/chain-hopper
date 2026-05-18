@@ -464,7 +464,6 @@ function LandingFooter() {
             { label: "Bridge", href: "/bridge" },
             { label: "Roadmap", href: "#roadmap" },
             { label: "History", href: "/history" },
-            { label: "Portfolio", href: "/portfolio" },
           ]}
         />
         <FooterCol
