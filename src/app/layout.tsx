@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "Chain Hopper — One USDC, every chain",
+  title: "Plix — One USDC, every chain",
   description: "Native USDC bridging across 7 EVM testnets in 30 seconds. Powered by Circle CCTP V2.",
 };
 

@@ -29,10 +29,10 @@ export const arcTestnet = defineChain({
 // WalletConnect Project ID — set via env var NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo";
 
-// Chain Hopper supported chains — TESTNET ONLY (Phase 1)
+// Plix supported chains — TESTNET ONLY (Phase 1)
 // All chains support CCTP V2 + ERC20 USDC standard.
 export const config = getDefaultConfig({
-  appName: "Chain Hopper",
+  appName: "Plix",
   projectId,
   chains: [
     sepolia,

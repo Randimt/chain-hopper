@@ -87,7 +87,7 @@ function LandingNav() {
         <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base">
           ⚡
         </div>
-        <span>Chain Hopper</span>
+        <span>Plix</span>
       </Link>
       <div className="hidden md:flex gap-8 text-sm text-zinc-400">
         <a href="#vision" className="hover:text-zinc-100 transition-colors">Vision</a>
@@ -217,14 +217,14 @@ function VisionSection() {
           </div>
         </div>
 
-        {/* Good: Chain Hopper */}
+        {/* Good: Plix */}
         <div
           className="p-9 lg:border-l border-green-500/20 flex flex-col"
           style={{ background: "linear-gradient(135deg, rgba(34,197,94,0.05), rgba(6,182,212,0.04))" }}
         >
           <div className="font-mono text-[11px] uppercase tracking-[0.15em] mb-6 pb-4 border-b border-white/5 text-green-500 flex items-center gap-2.5">
             <span>+</span>
-            <span>The Chain Hopper Way</span>
+            <span>The Plix Way</span>
           </div>
           <div className="text-2xl font-bold tracking-tight mb-6">One step. One app.</div>
           <ul className="space-y-3.5 flex-1 mb-6">
@@ -409,7 +409,7 @@ function FeaturesSection() {
   return (
     <section id="features" className="relative z-[5] px-6 sm:px-8 py-24 md:py-32 max-w-6xl mx-auto border-t border-white/5">
       <div className="font-mono text-xs text-cyan-500 uppercase tracking-[0.2em] mb-3.5 before:content-['//_']">
-        why chain hopper
+        why plix
       </div>
       <h2 className="text-[clamp(36px,5vw,64px)] font-bold tracking-tight mb-12 max-w-3xl leading-[1.05]">
         Built for the{" "}
@@ -447,7 +447,7 @@ function LandingFooter() {
             <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base">
               ⚡
             </div>
-            <span>Chain Hopper</span>
+            <span>Plix</span>
           </div>
           <p className="text-sm text-zinc-400 leading-[1.7] mb-6 max-w-[300px]">
             Cross-chain USDC bridging powered by Circle CCTP V2. The first-party protocol from USDC&apos;s creator.
@@ -485,7 +485,7 @@ function LandingFooter() {
         />
       </div>
       <div className="max-w-6xl mx-auto pt-8 border-t border-white/5 flex justify-between flex-wrap gap-3 text-[13px] text-zinc-500">
-        <div>© 2026 Chain Hopper · Built by @randmt5</div>
+        <div>© 2026 Plix · Built by @randmt5</div>
         <div>Testnet · Not production · MIT License</div>
       </div>
     </footer>
