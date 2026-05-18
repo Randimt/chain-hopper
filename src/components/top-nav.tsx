@@ -37,12 +37,12 @@ export function TopNav() {
         <div className="flex items-center gap-8 lg:gap-10 min-w-0">
           <Link
             href="/"
-            className="flex items-center gap-2 font-bold text-base text-zinc-100 hover:text-white transition-colors shrink-0"
+            className="flex items-center gap-2 h-9 font-bold text-base text-zinc-100 hover:text-white transition-colors shrink-0"
           >
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center text-white font-black text-xs">
               CH
             </div>
-            <span className="hidden sm:inline">Chain Hopper</span>
+            <span className="hidden sm:inline leading-none">Chain Hopper</span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1 h-9">
