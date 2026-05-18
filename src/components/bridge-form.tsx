@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { ChainSelector } from "./chain-selector";
 import { TxTracker } from "./tx-tracker";
 import { QuoteList } from "./quote-list";
+import { SettingsDrawer } from "./settings-drawer";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
 import { useRelayBridge } from "@/hooks/useRelayBridge";
@@ -93,6 +94,7 @@ export function BridgeForm() {
   const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<QuoteProvider | null>(null);
   const [userPickedProvider, setUserPickedProvider] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const { state, approve, bridge, resume, reset } = useBridge();
   const {
     state: relayState,
@@ -729,6 +731,34 @@ export function BridgeForm() {
   return (
     <>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6 space-y-5 sm:space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between -mb-1">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-100 leading-none">Bridge USDC</h2>
+            <p className="text-xs text-zinc-500 mt-1.5">Move USDC across testnets</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Bridge settings"
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors shrink-0"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        </div>
+
         {/* From Chain */}
         <div className="space-y-3">
           <ChainSelector
@@ -1005,6 +1035,9 @@ export function BridgeForm() {
         destChain={destChain}
         onClose={() => reset()}
       />
+
+      {/* Settings drawer — mounted here, opens from bridge form gear icon */}
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </>
   );
 }
