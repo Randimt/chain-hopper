@@ -207,22 +207,21 @@ export function useBridge() {
           account: address,
         });
 
-        setState((s) => ({ ...s, mintTxHash }));
+        // Mark complete immediately — tx is signed & submitted on-chain.
+        // Receipt indexing can be slow (especially Arc/Base), but the bridge is functionally done.
+        // User has tx hash + explorer link to verify if needed.
+        setState((s) => ({ ...s, mintTxHash, status: "complete" }));
 
-        // Wait for mint receipt (gracefully handle timeout — tx is already on-chain)
-        try {
-          await publicClient.waitForTransactionReceipt({
+        // Background receipt verification (non-blocking, fire-and-forget)
+        publicClient
+          .waitForTransactionReceipt({
             hash: mintTxHash,
             timeout: 180_000,
             pollingInterval: 2_000,
+          })
+          .catch((waitErr) => {
+            console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
           });
-        } catch (waitErr) {
-          // Timeout is OK — tx is on-chain, just slow indexer.
-          // User can verify via explorer link.
-          console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
-        }
-
-        setState((s) => ({ ...s, status: "complete" }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unknown error";
         setState((s) => ({
