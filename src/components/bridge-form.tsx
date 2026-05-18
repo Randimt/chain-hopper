@@ -155,6 +155,15 @@ export function BridgeForm() {
     }
   };
 
+  const handleFlip = () => {
+    const newSource = destChain;
+    const newDest = sourceChain;
+    setSourceChain(newSource);
+    setDestChain(newDest);
+    // Reset amount karena balance dest chain mungkin beda
+    setAmount("");
+  };
+
   const { data: balanceRaw } = useReadContract({
     address: USDC_ADDRESSES[sourceChain],
     abi: erc20Abi,
@@ -189,6 +198,7 @@ export function BridgeForm() {
   const isBridging = ["burning", "attesting", "minting"].includes(status);
   const isComplete = status === "complete";
   const hasError = status === "error";
+  const isProcessing = isApproving || isBridging;
 
   const canApprove =
     isConnected &&
@@ -294,9 +304,27 @@ export function BridgeForm() {
       </div>
 
       <div className="flex items-center justify-center -my-3">
-        <div className="rounded-full border border-zinc-700 bg-zinc-900 w-8 h-8 flex items-center justify-center text-zinc-400">
-          ↓
-        </div>
+        <button
+          type="button"
+          onClick={handleFlip}
+          disabled={isProcessing}
+          aria-label="Flip source and destination chains"
+          className="group rounded-full border border-zinc-700 bg-zinc-900 w-9 h-9 flex items-center justify-center text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-zinc-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-700 disabled:hover:bg-zinc-900"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="w-4 h-4 transition-transform group-hover:rotate-180"
+          >
+            <path d="M7 16V4M7 4L3 8M7 4L11 8" />
+            <path d="M17 8v12M17 20l-4-4M17 20l4-4" />
+          </svg>
+        </button>
       </div>
 
       {/* To Chain */}
