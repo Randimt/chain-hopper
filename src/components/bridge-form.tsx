@@ -7,8 +7,12 @@ import { sepolia, baseSepolia } from "wagmi/chains";
 import toast from "react-hot-toast";
 import { ChainSelector } from "./chain-selector";
 import { TxTracker } from "./tx-tracker";
+import { QuoteList } from "./quote-list";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
+import { useRelayBridge } from "@/hooks/useRelayBridge";
+import { useQuotes } from "@/hooks/useQuotes";
+import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
 import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
 
 const STORAGE_KEY = "chain-hopper:pending-bridge";
@@ -35,7 +39,7 @@ function savePendingBridge(address: string, data: PendingBridge) {
   try {
     localStorage.setItem(
       `${STORAGE_KEY}:${address.toLowerCase()}`,
-      JSON.stringify(data)
+      JSON.stringify(data),
     );
   } catch {
     /* quota / private mode */
@@ -86,16 +90,73 @@ export function BridgeForm() {
   const [destChain, setDestChain] = useState<number>(baseSepolia.id);
   const [amount, setAmount] = useState<string>("");
   const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<QuoteProvider | null>(null);
+  const [userPickedProvider, setUserPickedProvider] = useState<boolean>(false);
   const { state, approve, bridge, resume, reset } = useBridge();
+  const {
+    state: relayState,
+    bridge: relayBridge,
+    reset: relayReset,
+  } = useRelayBridge();
   const recordIdRef = useRef<string | null>(null);
   const recordStartedAtRef = useRef<number>(0);
-  // Captured source/dest/amount snapshot at burn-start time. Resume() may run with
-  // different form state than the original bridge, so we lock these in when burning starts.
   const recordMetaRef = useRef<{
     sourceChain: number;
     destChain: number;
     amount: string;
+    provider: QuoteProvider;
   } | null>(null);
+
+  // ============ Quote fetching ============
+  const amountWei = useMemo(() => {
+    if (!amount || parseFloat(amount) <= 0) return "0";
+    return parseUSDC(amount);
+  }, [amount]);
+
+  const quoteRequest = useMemo(() => {
+    if (!isConnected || amountWei === "0") return null;
+    return {
+      sourceChain,
+      destChain,
+      amountIn: amountWei,
+      sender: address,
+    };
+  }, [isConnected, sourceChain, destChain, amountWei, address]);
+
+  const { quotes, bestByReceive, bestBySpeed, isLoading: quotesLoading } =
+    useQuotes(quoteRequest);
+
+  // Auto-select best provider when quotes load (unless user manually picked)
+  useEffect(() => {
+    if (quotes.length === 0 || userPickedProvider) return;
+    const available = quotes.filter((q) => q.status === "available");
+    if (available.length === 0) {
+      setSelectedProvider(null);
+      return;
+    }
+    if (selectedProvider) {
+      const stillValid = available.find((q) => q.provider === selectedProvider);
+      if (stillValid) return;
+    }
+    // Default to bestByReceive
+    if (bestByReceive) setSelectedProvider(bestByReceive);
+    else setSelectedProvider(available[0].provider);
+  }, [quotes, bestByReceive, selectedProvider, userPickedProvider]);
+
+  // Reset user-picked flag when amount/chains change (re-enable smart default)
+  useEffect(() => {
+    setUserPickedProvider(false);
+  }, [sourceChain, destChain]);
+
+  const handleSelectProvider = (provider: QuoteProvider) => {
+    setSelectedProvider(provider);
+    setUserPickedProvider(true);
+  };
+
+  const selectedQuote = useMemo(
+    () => quotes.find((q) => q.provider === selectedProvider) ?? null,
+    [quotes, selectedProvider],
+  );
 
   // Load pending bridge from localStorage on mount / wallet change
   useEffect(() => {
@@ -107,9 +168,7 @@ export function BridgeForm() {
     setPendingBridge(pending);
   }, [address]);
 
-  // Save burn tx to localStorage as soon as it lands.
-  // Guard with status === "burning" so it doesn't re-fire after resume completes
-  // (when state still has burnTxHash but pendingBridge was just cleared).
+  // Save burn tx (CCTP only) to localStorage
   useEffect(() => {
     if (
       state.burnTxHash &&
@@ -129,7 +188,7 @@ export function BridgeForm() {
     }
   }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount]);
 
-  // Clear pending after successful complete
+  // Clear pending after CCTP complete
   useEffect(() => {
     if (state.status === "complete" && address) {
       clearPendingBridge(address);
@@ -137,7 +196,7 @@ export function BridgeForm() {
     }
   }, [state.status, address]);
 
-  // Toast feedback on key state transitions (track previous status to fire once)
+  // ============ CCTP toast / history tracking ============
   const prevStatusRef = useRef<string>("idle");
   useEffect(() => {
     const prev = prevStatusRef.current;
@@ -148,16 +207,13 @@ export function BridgeForm() {
       toast.success("USDC approved");
     } else if (curr === "burning" && prev !== "burning") {
       toast.loading("Burning USDC on source chain", { id: "bridge-progress" });
-      // Start tracking new bridge record + lock in metadata snapshot
       if (!recordIdRef.current) {
         recordIdRef.current = generateBridgeId();
         recordStartedAtRef.current = Date.now();
       }
-      recordMetaRef.current = { sourceChain, destChain, amount };
+      recordMetaRef.current = { sourceChain, destChain, amount, provider: "cctp" };
     } else if (curr === "attesting" && prev !== "attesting") {
       toast.loading("Waiting for Circle attestation", { id: "bridge-progress" });
-      // Resume() jumps straight here without going through "burning". Initialize
-      // record tracking now so completes/errors after resume still get saved.
       if (!recordIdRef.current) {
         recordIdRef.current = generateBridgeId();
         recordStartedAtRef.current = Date.now();
@@ -167,13 +223,16 @@ export function BridgeForm() {
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC minted");
-      // Save successful bridge record. Use captured metadata when available
-      // (resume case: form fields may have drifted since the original burn).
       if (address && recordIdRef.current) {
-        const meta = recordMetaRef.current ?? { sourceChain, destChain, amount };
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "cctp" as QuoteProvider,
+        };
         const record: BridgeRecord = {
           id: recordIdRef.current,
-          provider: "cctp",
+          provider: meta.provider,
           sourceChain: meta.sourceChain,
           destChain: meta.destChain,
           amount: meta.amount,
@@ -185,7 +244,6 @@ export function BridgeForm() {
           completedAt: Date.now(),
         };
         addBridgeRecord(address, record);
-        // Notify history component to refresh
         window.dispatchEvent(new Event("bridge-history-updated"));
         recordIdRef.current = null;
         recordMetaRef.current = null;
@@ -193,12 +251,16 @@ export function BridgeForm() {
     } else if (curr === "error") {
       toast.dismiss("bridge-progress");
       toast.error(state.errorMessage || "Bridge failed");
-      // Save failed bridge record (if we got past burning)
       if (address && recordIdRef.current) {
-        const meta = recordMetaRef.current ?? { sourceChain, destChain, amount };
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "cctp" as QuoteProvider,
+        };
         const record: BridgeRecord = {
           id: recordIdRef.current,
-          provider: "cctp",
+          provider: meta.provider,
           sourceChain: meta.sourceChain,
           destChain: meta.destChain,
           amount: meta.amount,
@@ -230,6 +292,103 @@ export function BridgeForm() {
     amount,
   ]);
 
+  // ============ Relay toast / history tracking ============
+  const prevRelayStatusRef = useRef<string>("idle");
+  useEffect(() => {
+    const prev = prevRelayStatusRef.current;
+    const curr = relayState.status;
+    if (prev === curr) return;
+
+    if (curr === "approving" && prev !== "approving") {
+      toast.loading("Approving USDC for Relay", { id: "bridge-progress" });
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
+      recordMetaRef.current = { sourceChain, destChain, amount, provider: "relay" };
+    } else if (curr === "depositing" && prev !== "depositing") {
+      toast.loading("Submitting Relay intent", { id: "bridge-progress" });
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
+      if (!recordMetaRef.current) {
+        recordMetaRef.current = { sourceChain, destChain, amount, provider: "relay" };
+      }
+    } else if (curr === "filling" && prev !== "filling") {
+      toast.loading("Solver filling on destination", { id: "bridge-progress" });
+    } else if (curr === "complete") {
+      toast.dismiss("bridge-progress");
+      toast.success("Bridge complete — USDC delivered via Relay");
+      if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "relay" as QuoteProvider,
+        };
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: meta.provider,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
+          status: "complete",
+          approveTxHash: relayState.approveTxHash,
+          burnTxHash: relayState.depositTxHash,
+          mintTxHash: relayState.fillTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+        };
+        addBridgeRecord(address, record);
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+        recordMetaRef.current = null;
+      }
+    } else if (curr === "error") {
+      toast.dismiss("bridge-progress");
+      toast.error(relayState.errorMessage || "Relay bridge failed");
+      if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "relay" as QuoteProvider,
+        };
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: meta.provider,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
+          status: "failed",
+          approveTxHash: relayState.approveTxHash,
+          burnTxHash: relayState.depositTxHash,
+          mintTxHash: relayState.fillTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+          errorMessage: relayState.errorMessage,
+        };
+        addBridgeRecord(address, record);
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+        recordMetaRef.current = null;
+      }
+    }
+
+    prevRelayStatusRef.current = curr;
+  }, [
+    relayState.status,
+    relayState.errorMessage,
+    relayState.approveTxHash,
+    relayState.depositTxHash,
+    relayState.fillTxHash,
+    address,
+    sourceChain,
+    destChain,
+    amount,
+  ]);
+
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
     if (chainId === destChain) {
@@ -240,11 +399,8 @@ export function BridgeForm() {
   };
 
   const handleFlip = () => {
-    const newSource = destChain;
-    const newDest = sourceChain;
-    setSourceChain(newSource);
-    setDestChain(newDest);
-    // Reset amount karena balance dest chain mungkin beda
+    setSourceChain(destChain);
+    setDestChain(sourceChain);
     setAmount("");
   };
 
@@ -269,38 +425,46 @@ export function BridgeForm() {
   const hasAmount = amountNum > 0;
   const sufficientBalance = amountNum <= balance;
 
-  const feePlaceholder = 0.5;
-  const receiveAmount = hasAmount ? Math.max(0, amountNum - feePlaceholder) : 0;
-  const etaPlaceholder = "~30 seconds (CCTP V2 Fast)";
-
   const sourceInfo = CHAIN_INFO[sourceChain];
   const destInfo = CHAIN_INFO[destChain];
 
-  const status = state.status;
-  const isApproving = status === "approving";
-  const isApproved = status === "approved";
-  const isBridging = ["burning", "attesting", "minting"].includes(status);
-  const isComplete = status === "complete";
-  const hasError = status === "error";
-  const isProcessing = isApproving || isBridging;
+  // Combined processing state across both providers
+  const cctpProcessing = ["approving", "burning", "attesting", "minting"].includes(
+    state.status,
+  );
+  const relayProcessing = ["approving", "depositing", "filling"].includes(
+    relayState.status,
+  );
+  const isProcessing = cctpProcessing || relayProcessing;
 
-  const canApprove =
-    isConnected &&
-    hasAmount &&
-    sufficientBalance &&
-    (status === "idle" || hasError);
-  const canBridge = isApproved && hasAmount && sufficientBalance;
+  // CCTP-specific
+  const isApproved = state.status === "approved";
+  const isComplete = state.status === "complete" || relayState.status === "complete";
+  const hasError = state.status === "error" || relayState.status === "error";
 
-  const handleApprove = () => approve({ sourceChain });
-  const handleBridge = () => bridge({ sourceChain, destChain, amount });
+  // ============ Action handlers ============
+  const handleApprove = () => {
+    if (selectedProvider !== "cctp") return;
+    approve({ sourceChain });
+  };
+
+  const handleBridge = () => {
+    if (!selectedQuote || selectedQuote.status !== "available") return;
+
+    if (selectedProvider === "cctp") {
+      bridge({ sourceChain, destChain, amount });
+    } else if (selectedProvider === "relay") {
+      relayBridge(selectedQuote);
+    }
+  };
+
   const handleResume = () => {
     if (!pendingBridge) return;
-    // Capture metadata from the pending bridge BEFORE resume() runs.
-    // The "attesting" useEffect will pick this up since recordIdRef is null at start.
     recordMetaRef.current = {
       sourceChain: pendingBridge.sourceChain,
       destChain: pendingBridge.destChain,
       amount: pendingBridge.amount,
+      provider: "cctp",
     };
     resume({
       sourceChain: pendingBridge.sourceChain,
@@ -308,12 +472,37 @@ export function BridgeForm() {
       burnTxHash: pendingBridge.burnTxHash,
     });
   };
+
   const handleDiscardPending = () => {
     if (!address) return;
     clearPendingBridge(address);
     setPendingBridge(null);
     reset();
   };
+
+  const handleBridgeAgain = () => {
+    reset();
+    relayReset();
+    setAmount("");
+    setSelectedProvider(null);
+    setUserPickedProvider(false);
+  };
+
+  // CCTP needs separate Approve step — Relay bundles approve into intent flow
+  const showApproveButton = selectedProvider === "cctp";
+  const canApprove =
+    selectedProvider === "cctp" &&
+    isConnected &&
+    hasAmount &&
+    sufficientBalance &&
+    (state.status === "idle" || state.status === "error");
+  const canBridge =
+    selectedQuote?.status === "available" &&
+    hasAmount &&
+    sufficientBalance &&
+    !isProcessing &&
+    !isComplete &&
+    (selectedProvider === "relay" || isApproved); // Relay no pre-approve, CCTP requires approved
 
   if (!isConnected) {
     return (
@@ -323,8 +512,8 @@ export function BridgeForm() {
     );
   }
 
-  // RESUME UI: pending bridge detected
-  if (pendingBridge && status === "idle") {
+  // RESUME UI: pending CCTP bridge detected
+  if (pendingBridge && state.status === "idle" && relayState.status === "idle") {
     const pendingSource = CHAIN_INFO[pendingBridge.sourceChain];
     const pendingDest = CHAIN_INFO[pendingBridge.destChain];
     const minutesAgo = Math.round((Date.now() - pendingBridge.timestamp) / 60000);
@@ -333,7 +522,7 @@ export function BridgeForm() {
         <div className="space-y-1">
           <p className="text-sm font-medium text-amber-300">⚠ Pending Bridge Detected</p>
           <p className="text-xs text-zinc-400">
-            You have an unfinished bridge from {minutesAgo} minute(s) ago.
+            You have an unfinished CCTP bridge from {minutesAgo} minute(s) ago.
             Resume to claim your USDC on {pendingDest.name}.
           </p>
         </div>
@@ -376,224 +565,259 @@ export function BridgeForm() {
     );
   }
 
+  // Relay status text helper
+  const relayStatusText = (() => {
+    switch (relayState.status) {
+      case "approving":
+        return `⏳ Approving USDC on ${sourceInfo.name}...`;
+      case "depositing":
+        return `⏳ Submitting deposit on ${sourceInfo.name}...`;
+      case "filling":
+        return `⏳ ${relayState.fillStatusMessage || "Solver filling on destination"}...`;
+      default:
+        return null;
+    }
+  })();
+
   return (
     <>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6 space-y-5 sm:space-y-6">
-      {/* From Chain */}
-      <div className="space-y-3">
-        <ChainSelector
-          value={sourceChain}
-          onChange={handleSourceChange}
-          label="From"
-        />
-        <div className="flex justify-between text-xs text-zinc-500 px-1">
-          <span>Balance</span>
-          <span className="tabular-nums text-zinc-300">
-            {balance.toFixed(2)} USDC
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-center -my-3">
-        <button
-          type="button"
-          onClick={handleFlip}
-          disabled={isProcessing}
-          aria-label="Flip source and destination chains"
-          className="group rounded-full border border-zinc-700 bg-zinc-900 w-9 h-9 flex items-center justify-center text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-zinc-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-700 disabled:hover:bg-zinc-900"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="w-4 h-4 transition-transform group-hover:rotate-180"
-          >
-            <path d="M7 16V4M7 4L3 8M7 4L11 8" />
-            <path d="M17 8v12M17 20l-4-4M17 20l4-4" />
-          </svg>
-        </button>
-      </div>
-
-      {/* To Chain */}
-      <div className="space-y-3">
-        <ChainSelector
-          value={destChain}
-          onChange={setDestChain}
-          exclude={sourceChain}
-          label="To"
-        />
-      </div>
-
-      {/* Amount */}
-      <div className="space-y-2">
-        <label className="text-xs uppercase tracking-wider text-zinc-500 font-medium">
-          Amount
-        </label>
-        <div className="relative">
-          <input
-            type="number"
-            inputMode="decimal"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            min="0"
-            step="0.01"
-            disabled={isBridging || isApproving}
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 pr-20 text-base text-zinc-200 tabular-nums focus:border-blue-500 focus:outline-none disabled:opacity-50"
+        {/* From Chain */}
+        <div className="space-y-3">
+          <ChainSelector
+            value={sourceChain}
+            onChange={handleSourceChange}
+            label="From"
           />
-          <button
-            onClick={() => setAmount(balance.toString())}
-            disabled={balance === 0 || isBridging || isApproving}
-            className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Max
-          </button>
-        </div>
-        {hasAmount && !sufficientBalance && (
-          <p className="text-xs text-red-400">Insufficient balance</p>
-        )}
-      </div>
-
-      {/* Quote Summary */}
-      <div className="rounded-lg border border-zinc-800/50 bg-zinc-950/50 p-4 space-y-2 text-sm">
-        <div className="flex justify-between">
-          <span className="text-zinc-500">Estimated time</span>
-          <span className="text-zinc-300">{etaPlaceholder}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-zinc-500">Max fee</span>
-          <span className="text-zinc-300 tabular-nums">
-            ~{feePlaceholder.toFixed(2)} USDC
-          </span>
-        </div>
-        <div className="flex justify-between border-t border-zinc-800 pt-2 mt-2">
-          <span className="text-zinc-400 font-medium">You receive</span>
-          <span className="text-zinc-100 font-semibold tabular-nums">
-            {receiveAmount.toFixed(2)} USDC{" "}
-            <span className="text-zinc-500 font-normal text-xs">
-              on {destInfo.name}
+          <div className="flex justify-between text-xs text-zinc-500 px-1">
+            <span>Balance</span>
+            <span className="tabular-nums text-zinc-300">
+              {balance.toFixed(2)} USDC
             </span>
-          </span>
+          </div>
         </div>
-      </div>
 
-      {/* Status messages */}
-      {status === "approving" && (
-        <div className="text-xs text-blue-400 text-center">
-          ⏳ Approving USDC on {sourceInfo.name}...
-        </div>
-      )}
-      {status === "approved" && (
-        <div className="text-xs text-green-400 text-center">
-          ✓ Approved. Click &quot;Bridge&quot; to continue.
-        </div>
-      )}
-      {status === "burning" && (
-        <div className="text-xs text-blue-400 text-center">
-          ⏳ Burning USDC on {sourceInfo.name}...
-        </div>
-      )}
-      {status === "attesting" && (
-        <div className="text-xs text-blue-400 text-center">
-          ⏳ Waiting for Circle attestation
-          {state.attestationStatus && ` (${state.attestationStatus})`}...
-        </div>
-      )}
-      {status === "minting" && (
-        <div className="text-xs text-blue-400 text-center">
-          ⏳ Minting USDC on {destInfo.name}...
-        </div>
-      )}
-      {status === "complete" && (
-        <div className="text-xs text-green-400 text-center">
-          ✓ Bridge complete! USDC minted on {destInfo.name}.
-        </div>
-      )}
-      {status === "error" && state.errorMessage && (
-        <div className="text-xs text-red-400 text-center break-words">
-          ⚠ {state.errorMessage}
-        </div>
-      )}
-
-      {/* Action Buttons */}
-      <div className="space-y-2">
-        {!isComplete ? (
-          <>
-            <button
-              onClick={handleApprove}
-              disabled={!canApprove}
-              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
-            >
-              {isApproving
-                ? "Approving..."
-                : isApproved
-                ? `✓ Approved`
-                : `Approve ${sourceInfo.name} USDC`}
-            </button>
-            <button
-              onClick={handleBridge}
-              disabled={!canBridge || isBridging}
-              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
-            >
-              {isBridging
-                ? status === "burning"
-                  ? "Burning..."
-                  : status === "attesting"
-                  ? "Waiting for attestation..."
-                  : "Minting..."
-                : `Bridge to ${destInfo.name}`}
-            </button>
-          </>
-        ) : (
+        <div className="flex items-center justify-center -my-3">
           <button
-            onClick={() => {
-              reset();
-              setAmount("");
-            }}
-            className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 px-4 text-sm transition-colors"
+            type="button"
+            onClick={handleFlip}
+            disabled={isProcessing}
+            aria-label="Flip source and destination chains"
+            className="group rounded-full border border-zinc-700 bg-zinc-900 w-9 h-9 flex items-center justify-center text-zinc-400 hover:text-cyan-400 hover:border-cyan-500/50 hover:bg-zinc-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-700 disabled:hover:bg-zinc-900"
           >
-            Bridge Again
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4 transition-transform group-hover:rotate-180"
+            >
+              <path d="M7 16V4M7 4L3 8M7 4L11 8" />
+              <path d="M17 8v12M17 20l-4-4M17 20l4-4" />
+            </svg>
           </button>
-        )}
-      </div>
+        </div>
 
-      {/* Tx hash links — clickable to explorer */}
-      {(state.approveTxHash || state.burnTxHash || state.mintTxHash) && (
-        <div className="text-xs space-y-1 pt-2 border-t border-zinc-800/50">
-          {state.approveTxHash && (
-            <TxLink
-              hash={state.approveTxHash}
-              chainId={sourceChain}
-              label="Approve"
+        {/* To Chain */}
+        <div className="space-y-3">
+          <ChainSelector
+            value={destChain}
+            onChange={setDestChain}
+            exclude={sourceChain}
+            label="To"
+          />
+        </div>
+
+        {/* Amount */}
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-wider text-zinc-500 font-medium">
+            Amount
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              min="0"
+              step="0.01"
+              disabled={isProcessing}
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 pr-20 text-base text-zinc-200 tabular-nums focus:border-blue-500 focus:outline-none disabled:opacity-50"
             />
-          )}
-          {state.burnTxHash && (
-            <TxLink
-              hash={state.burnTxHash}
-              chainId={sourceChain}
-              label="Burn"
-            />
-          )}
-          {state.mintTxHash && (
-            <TxLink
-              hash={state.mintTxHash}
-              chainId={destChain}
-              label="Mint"
-            />
+            <button
+              onClick={() => setAmount(balance.toString())}
+              disabled={balance === 0 || isProcessing}
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Max
+            </button>
+          </div>
+          {hasAmount && !sufficientBalance && (
+            <p className="text-xs text-red-400">Insufficient balance</p>
           )}
         </div>
-      )}
 
-      <p className="text-xs text-zinc-600 text-center">
-        Phase 1 · CCTP V2 testnet · Fast Transfer enabled
-      </p>
+        {/* Quote List — provider comparison */}
+        {hasAmount && sufficientBalance && (
+          <QuoteList
+            quotes={quotes}
+            bestByReceive={bestByReceive}
+            bestBySpeed={bestBySpeed}
+            selectedProvider={selectedProvider}
+            onSelectProvider={handleSelectProvider}
+            isLoading={quotesLoading}
+            disabled={isProcessing}
+          />
+        )}
+
+        {/* CCTP status messages */}
+        {state.status === "approving" && (
+          <div className="text-xs text-blue-400 text-center">
+            ⏳ Approving USDC on {sourceInfo.name}...
+          </div>
+        )}
+        {state.status === "approved" && (
+          <div className="text-xs text-green-400 text-center">
+            ✓ Approved. Click &quot;Bridge&quot; to continue.
+          </div>
+        )}
+        {state.status === "burning" && (
+          <div className="text-xs text-blue-400 text-center">
+            ⏳ Burning USDC on {sourceInfo.name}...
+          </div>
+        )}
+        {state.status === "attesting" && (
+          <div className="text-xs text-blue-400 text-center">
+            ⏳ Waiting for Circle attestation
+            {state.attestationStatus && ` (${state.attestationStatus})`}...
+          </div>
+        )}
+        {state.status === "minting" && (
+          <div className="text-xs text-blue-400 text-center">
+            ⏳ Minting USDC on {destInfo.name}...
+          </div>
+        )}
+
+        {/* Relay status messages */}
+        {relayStatusText && (
+          <div className="text-xs text-blue-400 text-center">{relayStatusText}</div>
+        )}
+
+        {isComplete && (
+          <div className="text-xs text-green-400 text-center">
+            ✓ Bridge complete! USDC delivered on {destInfo.name}.
+          </div>
+        )}
+
+        {state.status === "error" && state.errorMessage && (
+          <div className="text-xs text-red-400 text-center break-words">
+            ⚠ {state.errorMessage}
+          </div>
+        )}
+        {relayState.status === "error" && relayState.errorMessage && (
+          <div className="text-xs text-red-400 text-center break-words">
+            ⚠ {relayState.errorMessage}
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="space-y-2">
+          {!isComplete ? (
+            <>
+              {showApproveButton && (
+                <button
+                  onClick={handleApprove}
+                  disabled={!canApprove}
+                  className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+                >
+                  {state.status === "approving"
+                    ? "Approving..."
+                    : isApproved
+                      ? `✓ Approved`
+                      : `Approve ${sourceInfo.name} USDC`}
+                </button>
+              )}
+              <button
+                onClick={handleBridge}
+                disabled={!canBridge}
+                className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+              >
+                {cctpProcessing
+                  ? state.status === "burning"
+                    ? "Burning..."
+                    : state.status === "attesting"
+                      ? "Waiting for attestation..."
+                      : state.status === "minting"
+                        ? "Minting..."
+                        : "Approving..."
+                  : relayProcessing
+                    ? relayState.status === "approving"
+                      ? "Approving..."
+                      : relayState.status === "depositing"
+                        ? "Depositing..."
+                        : "Filling..."
+                    : selectedProvider === "relay"
+                      ? `Bridge via Relay → ${destInfo.name}`
+                      : selectedProvider === "cctp"
+                        ? `Bridge via CCTP → ${destInfo.name}`
+                        : "Select a route"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleBridgeAgain}
+              className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 px-4 text-sm transition-colors"
+            >
+              Bridge Again
+            </button>
+          )}
+        </div>
+
+        {/* Tx hash links — clickable to explorer */}
+        {(state.approveTxHash ||
+          state.burnTxHash ||
+          state.mintTxHash ||
+          relayState.approveTxHash ||
+          relayState.depositTxHash ||
+          relayState.fillTxHash) && (
+          <div className="text-xs space-y-1 pt-2 border-t border-zinc-800/50">
+            {state.approveTxHash && (
+              <TxLink hash={state.approveTxHash} chainId={sourceChain} label="Approve" />
+            )}
+            {state.burnTxHash && (
+              <TxLink hash={state.burnTxHash} chainId={sourceChain} label="Burn" />
+            )}
+            {state.mintTxHash && (
+              <TxLink hash={state.mintTxHash} chainId={destChain} label="Mint" />
+            )}
+            {relayState.approveTxHash && (
+              <TxLink hash={relayState.approveTxHash} chainId={sourceChain} label="Approve" />
+            )}
+            {relayState.depositTxHash && (
+              <TxLink
+                hash={relayState.depositTxHash}
+                chainId={sourceChain}
+                label="Deposit"
+              />
+            )}
+            {relayState.fillTxHash && (
+              <TxLink hash={relayState.fillTxHash} chainId={destChain} label="Fill" />
+            )}
+          </div>
+        )}
+
+        <p className="text-xs text-zinc-600 text-center">
+          {selectedProvider
+            ? `Routing via ${PROVIDER_INFO[selectedProvider].name}`
+            : "Phase 2 · Multi-aggregator routing"}
+        </p>
       </div>
 
-      {/* Floating tx tracker — shows during/after bridge flow */}
+      {/* Floating tx tracker — shows during/after CCTP bridge flow */}
       <TxTracker
         state={state}
         sourceChain={sourceChain}
