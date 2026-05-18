@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   BridgeSettings,
   DEFAULT_SETTINGS,
@@ -20,7 +21,13 @@ interface SettingsDrawerProps {
 export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
   const [settings, setSettings] = useState<BridgeSettings>(DEFAULT_SETTINGS);
   const [customSlippageStr, setCustomSlippageStr] = useState<string>("");
+  const [mounted, setMounted] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  // Mount detection (for SSR-safe portal)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load settings on mount + when drawer opens
   useEffect(() => {
@@ -93,10 +100,10 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
   const recipientValid =
     !settings.customRecipient || isValidAddress(settings.customRecipient);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm">
+  const drawerContent = (
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/40 backdrop-blur-sm">
       <div
         ref={drawerRef}
         className="w-full max-w-md h-full bg-zinc-950 border-l border-zinc-800 overflow-y-auto"
@@ -298,4 +305,6 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
       </div>
     </div>
   );
+
+  return createPortal(drawerContent, document.body);
 }
