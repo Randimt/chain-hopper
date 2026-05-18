@@ -32,6 +32,9 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
   const [error, setError] = useState<string | undefined>();
   const [settingsVersion, setSettingsVersion] = useState(0);
   const requestRef = useRef<string>("");
+  // Monotonic fetch counter — guards against stale fetch responses
+  // overwriting newer ones when settings/inputs change rapidly
+  const fetchSeqRef = useRef(0);
 
   const requestKey = request
     ? `${request.sourceChain}-${request.destChain}-${request.amountIn}-${request.sender || ""}`
@@ -45,6 +48,8 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
   }, []);
 
   const fetchQuotes = async (req: QuoteRequest) => {
+    // Take next sequence number — this fetch's "ticket"
+    const mySeq = ++fetchSeqRef.current;
     setIsLoading(true);
     setError(undefined);
     try {
@@ -64,15 +69,22 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
         enabledProviders: settings.enabledProviders,
         experimentalRoutes: settings.experimentalRoutes,
       });
-      // Only update if request hasn't changed since fetch started
+      // Only commit if this is still the latest fetch (no newer fetch started)
+      // AND the request key still matches (chain/amount didn't change)
       const currentKey = `${req.sourceChain}-${req.destChain}-${req.amountIn}-${req.sender || ""}`;
-      if (requestRef.current === currentKey) {
+      if (fetchSeqRef.current === mySeq && requestRef.current === currentKey) {
         setResult(res);
       }
     } catch (err) {
-      setError((err as Error).message || "Failed to fetch quotes");
+      // Only surface error if this is still the latest fetch
+      if (fetchSeqRef.current === mySeq) {
+        setError((err as Error).message || "Failed to fetch quotes");
+      }
     } finally {
-      setIsLoading(false);
+      // Only clear loading if this is still the latest fetch
+      if (fetchSeqRef.current === mySeq) {
+        setIsLoading(false);
+      }
     }
   };
 
