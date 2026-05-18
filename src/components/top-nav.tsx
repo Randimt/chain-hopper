@@ -7,6 +7,7 @@ import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import toast from "react-hot-toast";
 import { CHAIN_INFO } from "@/lib/wagmi";
+import { SettingsDrawer } from "./settings-drawer";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -28,6 +29,7 @@ export function TopNav() {
   const { openConnectModal } = useConnectModal();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const walletMenuRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) => {
@@ -123,7 +125,7 @@ export function TopNav() {
           </div>
         </div>
 
-        {/* Right: Network pill + Wallet + Mobile menu */}
+        {/* Right: Network pill + Settings + Wallet + Mobile menu */}
         <div className="flex items-center gap-2 sm:gap-2.5">
           <div className="hidden md:flex items-center gap-2 h-9 px-3 rounded-lg bg-white/[0.04] border border-white/[0.08] text-xs text-zinc-400 font-medium">
             <span className="relative flex w-2 h-2">
@@ -132,6 +134,27 @@ export function TopNav() {
             </span>
             <span className="leading-none">Testnet</span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Bridge settings"
+            className="flex items-center justify-center w-9 h-9 rounded-lg bg-white/[0.04] border border-white/[0.08] text-zinc-300 hover:bg-white/[0.08] hover:text-white transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
+            >
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
 
           {isConnected && address ? (
             <div className="relative" ref={walletMenuRef}>
@@ -304,6 +327,8 @@ export function TopNav() {
           </div>
         </div>
       )}
+
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </nav>
   );
 }

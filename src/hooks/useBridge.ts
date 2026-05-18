@@ -54,7 +54,9 @@ export interface BridgeState {
 interface UseBridgeArgs {
   sourceChain: number;
   destChain: number;
-  amount: string; // human-readable, e.g. "10.5"
+  amount: string;
+  /** Optional recipient address — defaults to connected wallet */
+  recipient?: `0x${string}`;
 }
 
 interface ResumeBridgeArgs {
@@ -130,7 +132,7 @@ export function useBridge() {
 
   // Step 2-4: Burn on source → poll attestation → Mint on destination
   const bridge = useCallback(
-    async ({ sourceChain, destChain, amount }: UseBridgeArgs) => {
+    async ({ sourceChain, destChain, amount, recipient }: UseBridgeArgs) => {
       if (!address || !walletClient || !publicClient) {
         setState({ status: "error", errorMessage: "Wallet not connected" });
         return;
@@ -149,7 +151,9 @@ export function useBridge() {
 
         const sourceUsdc = USDC_ADDRESSES[sourceChain];
         const destDomain = chainIdToDomain(destChain);
-        const mintRecipient = addressToBytes32(address);
+        // Use custom recipient if provided, else default to connected wallet
+        const recipientAddress = recipient || address;
+        const mintRecipient = addressToBytes32(recipientAddress);
         const amountWei = parseUnits(amount, 6);
 
         // Fast Transfer: maxFee >0 enables ~30s finality (small fee)

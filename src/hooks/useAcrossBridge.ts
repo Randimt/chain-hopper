@@ -88,7 +88,25 @@ export function useAcrossBridge() {
         return;
       }
 
-      const deposit = extractAcrossDeposit(quote, address);
+      // Pull custom recipient from settings if set
+      let recipient: `0x${string}` | undefined;
+      if (typeof window !== "undefined") {
+        try {
+          const settings = JSON.parse(
+            localStorage.getItem("plix:settings") || "{}",
+          );
+          if (
+            settings.customRecipient &&
+            /^0x[a-fA-F0-9]{40}$/.test(settings.customRecipient)
+          ) {
+            recipient = settings.customRecipient as `0x${string}`;
+          }
+        } catch {
+          // Bad JSON — fall through to default recipient
+        }
+      }
+
+      const deposit = extractAcrossDeposit(quote, address, recipient);
       if (!deposit) {
         setState({ status: "error", errorMessage: "Failed to extract Across deposit data" });
         return;

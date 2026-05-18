@@ -563,8 +563,19 @@ export function BridgeForm() {
   const handleBridge = () => {
     if (!selectedQuote || selectedQuote.status !== "available") return;
 
+    // Read recipient from settings (validated in drawer)
+    const settings =
+      typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("plix:settings") || "{}")
+        : {};
+    const customRecipient = settings.customRecipient;
+    const recipient =
+      customRecipient && /^0x[a-fA-F0-9]{40}$/.test(customRecipient)
+        ? (customRecipient as `0x${string}`)
+        : undefined;
+
     if (selectedProvider === "cctp") {
-      bridge({ sourceChain, destChain, amount });
+      bridge({ sourceChain, destChain, amount, recipient });
     } else if (selectedProvider === "relay") {
       relayBridge(selectedQuote);
     } else if (selectedProvider === "across") {

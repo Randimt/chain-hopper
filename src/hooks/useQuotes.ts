@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Quote, QuoteRequest, QuoteListResult } from "@/lib/quotes/types";
 import { getAllQuotes } from "@/lib/quotes/aggregator";
+import { loadSettings } from "@/lib/bridge-settings";
 
 export interface UseQuotesResult {
   quotes: Quote[];
@@ -18,7 +19,7 @@ export interface UseQuotesResult {
 
 /**
  * Returns live quotes for given source/dest/amount
- * Re-fetches on input change + every 30s for staleness
+ * Re-fetches on input change + every N seconds (configurable in settings)
  *
  * Pass `null` request to disable fetching
  */
@@ -29,17 +30,39 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [settingsVersion, setSettingsVersion] = useState(0);
   const requestRef = useRef<string>("");
 
   const requestKey = request
     ? `${request.sourceChain}-${request.destChain}-${request.amountIn}-${request.sender || ""}`
     : "";
 
+  // Listen for settings changes — refetch when toggles change
+  useEffect(() => {
+    const handler = () => setSettingsVersion((v) => v + 1);
+    window.addEventListener("plix-settings-updated", handler);
+    return () => window.removeEventListener("plix-settings-updated", handler);
+  }, []);
+
   const fetchQuotes = async (req: QuoteRequest) => {
     setIsLoading(true);
     setError(undefined);
     try {
-      const res = await getAllQuotes(req);
+      const settings = loadSettings();
+      // Validated recipient — only pass if valid 0x... format
+      const validRecipient =
+        settings.customRecipient && /^0x[a-fA-F0-9]{40}$/.test(settings.customRecipient)
+          ? (settings.customRecipient as `0x${string}`)
+          : undefined;
+      // Inject slippage + recipient into request
+      const reqWithSlippage: QuoteRequest = {
+        ...req,
+        slippageBps: settings.slippageBps,
+        recipient: validRecipient ?? req.recipient,
+      };
+      const res = await getAllQuotes(reqWithSlippage, {
+        enabledProviders: settings.enabledProviders,
+      });
       // Only update if request hasn't changed since fetch started
       const currentKey = `${req.sourceChain}-${req.destChain}-${req.amountIn}-${req.sender || ""}`;
       if (requestRef.current === currentKey) {
@@ -61,16 +84,19 @@ export function useQuotes(request: QuoteRequest | null): UseQuotesResult {
     requestRef.current = requestKey;
     fetchQuotes(request);
 
-    // Auto-refresh every 30s
+    // Auto-refresh per user-configured interval (0 = disabled)
+    const settings = loadSettings();
+    if (settings.autoRefreshSec <= 0) return;
+
     const interval = setInterval(() => {
       if (requestRef.current === requestKey) {
         fetchQuotes(request);
       }
-    }, 30_000);
+    }, settings.autoRefreshSec * 1000);
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestKey]);
+  }, [requestKey, settingsVersion]);
 
   const refresh = () => {
     if (request && request.amountIn && request.amountIn !== "0") {
