@@ -3,6 +3,7 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { UsdcBalances } from "@/components/usdc-balances";
 import { BridgeForm } from "@/components/bridge-form";
+import { BridgeHistory } from "@/components/bridge-history";
 
 export default function Home() {
   return (
@@ -53,6 +54,14 @@ export default function Home() {
           </section>
         </div>
 
+        {/* Bridge History */}
+        <section className="mt-12">
+          <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
+            History
+          </h3>
+          <BridgeHistory />
+        </section>
+
         {/* Coming soon */}
         <section className="max-w-3xl mx-auto mt-16">
           <h3 className="text-sm uppercase tracking-wider text-zinc-500 mb-4 font-medium">
@@ -60,7 +69,7 @@ export default function Home() {
           </h3>
           <div className="grid md:grid-cols-3 gap-3">
             {[
-              { icon: "🔄", title: "Multi-Aggregator", desc: "Across, Stargate, LiFi quotes" },
+              { icon: "🔄", title: "Multi-Aggregator", desc: "Relay, Across, LiFi quotes" },
               { icon: "💱", title: "Swap", desc: "1inch + Jupiter integration" },
               { icon: "📜", title: "Recipes", desc: "Save & schedule routes" },
             ].map((f) => (

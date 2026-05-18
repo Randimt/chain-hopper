@@ -9,6 +9,7 @@ import { ChainSelector } from "./chain-selector";
 import { TxTracker } from "./tx-tracker";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
+import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
 
 const STORAGE_KEY = "chain-hopper:pending-bridge";
 
@@ -86,6 +87,8 @@ export function BridgeForm() {
   const [amount, setAmount] = useState<string>("");
   const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
   const { state, approve, bridge, resume, reset } = useBridge();
+  const recordIdRef = useRef<string | null>(null);
+  const recordStartedAtRef = useRef<number>(0);
 
   // Load pending bridge from localStorage on mount / wallet change
   useEffect(() => {
@@ -131,6 +134,11 @@ export function BridgeForm() {
       toast.success("USDC approved");
     } else if (curr === "burning" && prev !== "burning") {
       toast.loading("Burning USDC on source chain", { id: "bridge-progress" });
+      // Start tracking new bridge record
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
     } else if (curr === "attesting" && prev !== "attesting") {
       toast.loading("Waiting for Circle attestation", { id: "bridge-progress" });
     } else if (curr === "minting" && prev !== "minting") {
@@ -138,13 +146,63 @@ export function BridgeForm() {
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC minted");
+      // Save successful bridge record
+      if (address && recordIdRef.current) {
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: "cctp",
+          sourceChain,
+          destChain,
+          amount,
+          status: "complete",
+          approveTxHash: state.approveTxHash,
+          burnTxHash: state.burnTxHash,
+          mintTxHash: state.mintTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+        };
+        addBridgeRecord(address, record);
+        // Notify history component to refresh
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+      }
     } else if (curr === "error") {
       toast.dismiss("bridge-progress");
       toast.error(state.errorMessage || "Bridge failed");
+      // Save failed bridge record (if we got past burning)
+      if (address && recordIdRef.current) {
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: "cctp",
+          sourceChain,
+          destChain,
+          amount,
+          status: "failed",
+          approveTxHash: state.approveTxHash,
+          burnTxHash: state.burnTxHash,
+          mintTxHash: state.mintTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+          errorMessage: state.errorMessage,
+        };
+        addBridgeRecord(address, record);
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+      }
     }
 
     prevStatusRef.current = curr;
-  }, [state.status, state.errorMessage]);
+  }, [
+    state.status,
+    state.errorMessage,
+    state.approveTxHash,
+    state.burnTxHash,
+    state.mintTxHash,
+    address,
+    sourceChain,
+    destChain,
+    amount,
+  ]);
 
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
