@@ -11,6 +11,7 @@ import { QuoteList } from "./quote-list";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
 import { useRelayBridge } from "@/hooks/useRelayBridge";
+import { useAcrossBridge } from "@/hooks/useAcrossBridge";
 import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
 import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
@@ -98,6 +99,11 @@ export function BridgeForm() {
     bridge: relayBridge,
     reset: relayReset,
   } = useRelayBridge();
+  const {
+    state: acrossState,
+    bridge: acrossBridge,
+    reset: acrossReset,
+  } = useAcrossBridge();
   const recordIdRef = useRef<string | null>(null);
   const recordStartedAtRef = useRef<number>(0);
   const recordMetaRef = useRef<{
@@ -389,6 +395,103 @@ export function BridgeForm() {
     amount,
   ]);
 
+  // ============ Across toast / history tracking ============
+  const prevAcrossStatusRef = useRef<string>("idle");
+  useEffect(() => {
+    const prev = prevAcrossStatusRef.current;
+    const curr = acrossState.status;
+    if (prev === curr) return;
+
+    if (curr === "approving" && prev !== "approving") {
+      toast.loading("Approving USDC for Across", { id: "bridge-progress" });
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
+      recordMetaRef.current = { sourceChain, destChain, amount, provider: "across" };
+    } else if (curr === "depositing" && prev !== "depositing") {
+      toast.loading("Submitting Across deposit", { id: "bridge-progress" });
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
+      if (!recordMetaRef.current) {
+        recordMetaRef.current = { sourceChain, destChain, amount, provider: "across" };
+      }
+    } else if (curr === "filling" && prev !== "filling") {
+      toast.loading("Relayer filling on destination", { id: "bridge-progress" });
+    } else if (curr === "complete") {
+      toast.dismiss("bridge-progress");
+      toast.success("Bridge complete — USDC delivered via Across");
+      if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "across" as QuoteProvider,
+        };
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: meta.provider,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
+          status: "complete",
+          approveTxHash: acrossState.approveTxHash,
+          burnTxHash: acrossState.depositTxHash,
+          mintTxHash: acrossState.fillTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+        };
+        addBridgeRecord(address, record);
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+        recordMetaRef.current = null;
+      }
+    } else if (curr === "error") {
+      toast.dismiss("bridge-progress");
+      toast.error(acrossState.errorMessage || "Across bridge failed");
+      if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? {
+          sourceChain,
+          destChain,
+          amount,
+          provider: "across" as QuoteProvider,
+        };
+        const record: BridgeRecord = {
+          id: recordIdRef.current,
+          provider: meta.provider,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
+          status: "failed",
+          approveTxHash: acrossState.approveTxHash,
+          burnTxHash: acrossState.depositTxHash,
+          mintTxHash: acrossState.fillTxHash,
+          startedAt: recordStartedAtRef.current,
+          completedAt: Date.now(),
+          errorMessage: acrossState.errorMessage,
+        };
+        addBridgeRecord(address, record);
+        window.dispatchEvent(new Event("bridge-history-updated"));
+        recordIdRef.current = null;
+        recordMetaRef.current = null;
+      }
+    }
+
+    prevAcrossStatusRef.current = curr;
+  }, [
+    acrossState.status,
+    acrossState.errorMessage,
+    acrossState.approveTxHash,
+    acrossState.depositTxHash,
+    acrossState.fillTxHash,
+    address,
+    sourceChain,
+    destChain,
+    amount,
+  ]);
+
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
     if (chainId === destChain) {
@@ -428,19 +531,28 @@ export function BridgeForm() {
   const sourceInfo = CHAIN_INFO[sourceChain];
   const destInfo = CHAIN_INFO[destChain];
 
-  // Combined processing state across both providers
+  // Combined processing state across all providers
   const cctpProcessing = ["approving", "burning", "attesting", "minting"].includes(
     state.status,
   );
   const relayProcessing = ["approving", "depositing", "filling"].includes(
     relayState.status,
   );
-  const isProcessing = cctpProcessing || relayProcessing;
+  const acrossProcessing = ["approving", "depositing", "filling"].includes(
+    acrossState.status,
+  );
+  const isProcessing = cctpProcessing || relayProcessing || acrossProcessing;
 
   // CCTP-specific
   const isApproved = state.status === "approved";
-  const isComplete = state.status === "complete" || relayState.status === "complete";
-  const hasError = state.status === "error" || relayState.status === "error";
+  const isComplete =
+    state.status === "complete" ||
+    relayState.status === "complete" ||
+    acrossState.status === "complete";
+  const hasError =
+    state.status === "error" ||
+    relayState.status === "error" ||
+    acrossState.status === "error";
 
   // ============ Action handlers ============
   const handleApprove = () => {
@@ -455,6 +567,8 @@ export function BridgeForm() {
       bridge({ sourceChain, destChain, amount });
     } else if (selectedProvider === "relay") {
       relayBridge(selectedQuote);
+    } else if (selectedProvider === "across") {
+      acrossBridge(selectedQuote);
     }
   };
 
@@ -483,12 +597,13 @@ export function BridgeForm() {
   const handleBridgeAgain = () => {
     reset();
     relayReset();
+    acrossReset();
     setAmount("");
     setSelectedProvider(null);
     setUserPickedProvider(false);
   };
 
-  // CCTP needs separate Approve step — Relay bundles approve into intent flow
+  // CCTP needs separate Approve step — Relay/Across bundle approve into intent flow
   const showApproveButton = selectedProvider === "cctp";
   const canApprove =
     selectedProvider === "cctp" &&
@@ -502,7 +617,9 @@ export function BridgeForm() {
     sufficientBalance &&
     !isProcessing &&
     !isComplete &&
-    (selectedProvider === "relay" || isApproved); // Relay no pre-approve, CCTP requires approved
+    (selectedProvider === "relay" ||
+      selectedProvider === "across" ||
+      isApproved); // CCTP requires pre-approve, Relay/Across don't
 
   if (!isConnected) {
     return (
@@ -513,7 +630,12 @@ export function BridgeForm() {
   }
 
   // RESUME UI: pending CCTP bridge detected
-  if (pendingBridge && state.status === "idle" && relayState.status === "idle") {
+  if (
+    pendingBridge &&
+    state.status === "idle" &&
+    relayState.status === "idle" &&
+    acrossState.status === "idle"
+  ) {
     const pendingSource = CHAIN_INFO[pendingBridge.sourceChain];
     const pendingDest = CHAIN_INFO[pendingBridge.destChain];
     const minutesAgo = Math.round((Date.now() - pendingBridge.timestamp) / 60000);
@@ -574,6 +696,20 @@ export function BridgeForm() {
         return `⏳ Submitting deposit on ${sourceInfo.name}...`;
       case "filling":
         return `⏳ ${relayState.fillStatusMessage || "Solver filling on destination"}...`;
+      default:
+        return null;
+    }
+  })();
+
+  // Across status text helper
+  const acrossStatusText = (() => {
+    switch (acrossState.status) {
+      case "approving":
+        return `⏳ Approving USDC on ${sourceInfo.name}...`;
+      case "depositing":
+        return `⏳ Submitting deposit on ${sourceInfo.name}...`;
+      case "filling":
+        return `⏳ ${acrossState.fillStatusMessage || "Relayer filling on destination"}...`;
       default:
         return null;
     }
@@ -707,6 +843,11 @@ export function BridgeForm() {
           <div className="text-xs text-blue-400 text-center">{relayStatusText}</div>
         )}
 
+        {/* Across status messages */}
+        {acrossStatusText && (
+          <div className="text-xs text-blue-400 text-center">{acrossStatusText}</div>
+        )}
+
         {isComplete && (
           <div className="text-xs text-green-400 text-center">
             ✓ Bridge complete! USDC delivered on {destInfo.name}.
@@ -721,6 +862,11 @@ export function BridgeForm() {
         {relayState.status === "error" && relayState.errorMessage && (
           <div className="text-xs text-red-400 text-center break-words">
             ⚠ {relayState.errorMessage}
+          </div>
+        )}
+        {acrossState.status === "error" && acrossState.errorMessage && (
+          <div className="text-xs text-red-400 text-center break-words">
+            ⚠ {acrossState.errorMessage}
           </div>
         )}
 
@@ -760,11 +906,19 @@ export function BridgeForm() {
                       : relayState.status === "depositing"
                         ? "Depositing..."
                         : "Filling..."
-                    : selectedProvider === "relay"
-                      ? `Bridge via Relay → ${destInfo.name}`
-                      : selectedProvider === "cctp"
-                        ? `Bridge via CCTP → ${destInfo.name}`
-                        : "Select a route"}
+                    : acrossProcessing
+                      ? acrossState.status === "approving"
+                        ? "Approving..."
+                        : acrossState.status === "depositing"
+                          ? "Depositing..."
+                          : "Filling..."
+                      : selectedProvider === "relay"
+                        ? `Bridge via Relay → ${destInfo.name}`
+                        : selectedProvider === "across"
+                          ? `Bridge via Across → ${destInfo.name}`
+                          : selectedProvider === "cctp"
+                            ? `Bridge via CCTP → ${destInfo.name}`
+                            : "Select a route"}
               </button>
             </>
           ) : (
@@ -783,7 +937,10 @@ export function BridgeForm() {
           state.mintTxHash ||
           relayState.approveTxHash ||
           relayState.depositTxHash ||
-          relayState.fillTxHash) && (
+          relayState.fillTxHash ||
+          acrossState.approveTxHash ||
+          acrossState.depositTxHash ||
+          acrossState.fillTxHash) && (
           <div className="text-xs space-y-1 pt-2 border-t border-zinc-800/50">
             {state.approveTxHash && (
               <TxLink hash={state.approveTxHash} chainId={sourceChain} label="Approve" />
@@ -806,6 +963,19 @@ export function BridgeForm() {
             )}
             {relayState.fillTxHash && (
               <TxLink hash={relayState.fillTxHash} chainId={destChain} label="Fill" />
+            )}
+            {acrossState.approveTxHash && (
+              <TxLink hash={acrossState.approveTxHash} chainId={sourceChain} label="Approve" />
+            )}
+            {acrossState.depositTxHash && (
+              <TxLink
+                hash={acrossState.depositTxHash}
+                chainId={sourceChain}
+                label="Deposit"
+              />
+            )}
+            {acrossState.fillTxHash && (
+              <TxLink hash={acrossState.fillTxHash} chainId={destChain} label="Fill" />
             )}
           </div>
         )}

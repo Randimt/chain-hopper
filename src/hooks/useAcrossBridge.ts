@@ -1,0 +1,262 @@
+"use client";
+
+import { useState, useCallback, useRef } from "react";
+import {
+  useAccount,
+  useSwitchChain,
+  usePublicClient,
+  useWalletClient,
+} from "wagmi";
+import {
+  sepolia,
+  baseSepolia,
+  arbitrumSepolia,
+} from "wagmi/chains";
+import { arcTestnet, USDC_ADDRESSES } from "@/lib/wagmi";
+import { decodeEventLog, erc20Abi, maxUint256, type Chain } from "viem";
+import { Quote } from "@/lib/quotes/types";
+import {
+  extractAcrossDeposit,
+  pollAcrossStatus,
+  SPOKE_POOL_ABI,
+} from "@/lib/quotes/across";
+import { friendlyError } from "@/lib/error-messages";
+
+const CHAIN_MAP: Record<number, Chain> = {
+  [sepolia.id]: sepolia,
+  [baseSepolia.id]: baseSepolia,
+  [arbitrumSepolia.id]: arbitrumSepolia,
+  [arcTestnet.id]: arcTestnet,
+};
+
+export type AcrossBridgeStatus =
+  | "idle"
+  | "approving"
+  | "depositing"
+  | "filling"
+  | "complete"
+  | "error";
+
+export interface AcrossBridgeState {
+  status: AcrossBridgeStatus;
+  approveTxHash?: `0x${string}`;
+  depositTxHash?: `0x${string}`;
+  fillTxHash?: `0x${string}`;
+  depositId?: string;
+  fillStatusMessage?: string;
+  errorMessage?: string;
+}
+
+const initialState: AcrossBridgeState = { status: "idle" };
+
+const POLL_INTERVAL_MS = 3000;
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * useAcrossBridge — optimistic intent-based bridging via Across Protocol
+ *
+ * Flow:
+ *   1. Approve USDC for the SpokePool contract on source chain
+ *   2. Call depositV3() on SpokePool — emits V3FundsDeposited event
+ *   3. Extract depositId from event logs
+ *   4. Poll Across status until relayer fills on dest chain
+ *   5. Done — USDC arrives in user wallet (no manual claim)
+ */
+export function useAcrossBridge() {
+  const { address } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  const [state, setState] = useState<AcrossBridgeState>(initialState);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const reset = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setState(initialState);
+  }, []);
+
+  const bridge = useCallback(
+    async (quote: Quote) => {
+      if (!address || !walletClient || !publicClient) {
+        setState({ status: "error", errorMessage: "Wallet not connected" });
+        return;
+      }
+
+      if (quote.provider !== "across" || quote.status !== "available") {
+        setState({ status: "error", errorMessage: "Invalid Across quote" });
+        return;
+      }
+
+      const deposit = extractAcrossDeposit(quote, address);
+      if (!deposit) {
+        setState({ status: "error", errorMessage: "Failed to extract Across deposit data" });
+        return;
+      }
+
+      const abortController = new AbortController();
+      abortRef.current = abortController;
+
+      try {
+        const { sourceChain } = quote;
+        const sourceUsdc = USDC_ADDRESSES[sourceChain];
+        if (!sourceUsdc) {
+          throw new Error("USDC contract not found for source chain");
+        }
+
+        // Ensure wallet on source chain
+        if (walletClient.chain?.id !== sourceChain) {
+          await switchChainAsync({ chainId: sourceChain });
+        }
+
+        // ============ STEP 1: Check + Approve USDC ============
+        const allowance = await publicClient.readContract({
+          address: sourceUsdc,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [address, deposit.spokePoolAddress],
+        });
+
+        if (allowance < deposit.inputAmount) {
+          setState({ status: "approving" });
+
+          const approveHash = await walletClient.writeContract({
+            address: sourceUsdc,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [deposit.spokePoolAddress, maxUint256],
+            chain: CHAIN_MAP[sourceChain],
+            account: address,
+          });
+
+          setState((s) => ({ ...s, approveTxHash: approveHash }));
+
+          await publicClient.waitForTransactionReceipt({
+            hash: approveHash,
+            timeout: 180_000,
+            pollingInterval: 2_000,
+          });
+        }
+
+        // ============ STEP 2: depositV3 on SpokePool ============
+        setState((s) => ({ ...s, status: "depositing" }));
+
+        const depositHash = await walletClient.writeContract({
+          address: deposit.spokePoolAddress,
+          abi: SPOKE_POOL_ABI,
+          functionName: "depositV3",
+          args: [
+            deposit.depositor,
+            deposit.recipient,
+            deposit.inputToken,
+            deposit.outputToken,
+            deposit.inputAmount,
+            deposit.outputAmount,
+            deposit.destinationChainId,
+            deposit.exclusiveRelayer,
+            deposit.quoteTimestamp,
+            deposit.fillDeadline,
+            deposit.exclusivityDeadline,
+            deposit.message,
+          ],
+          chain: CHAIN_MAP[sourceChain],
+          account: address,
+        });
+
+        setState((s) => ({ ...s, depositTxHash: depositHash }));
+
+        // Wait for source chain confirmation + extract depositId from event
+        const receipt = await publicClient.waitForTransactionReceipt({
+          hash: depositHash,
+          timeout: 180_000,
+          pollingInterval: 2_000,
+        });
+
+        // Extract depositId from V3FundsDeposited event
+        let depositId: string | undefined;
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: SPOKE_POOL_ABI,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === "V3FundsDeposited") {
+              depositId = decoded.args.depositId.toString();
+              break;
+            }
+          } catch {
+            // Not a V3FundsDeposited event, skip
+          }
+        }
+
+        if (!depositId) {
+          throw new Error("Could not extract depositId from deposit transaction");
+        }
+
+        setState((s) => ({ ...s, depositId }));
+
+        // ============ STEP 3: Poll Across status ============
+        setState((s) => ({
+          ...s,
+          status: "filling",
+          fillStatusMessage: "Waiting for relayer to fill on destination",
+        }));
+
+        const startedAt = Date.now();
+        let pollAttempt = 0;
+
+        while (true) {
+          if (abortController.signal.aborted) {
+            throw new Error("Bridge cancelled");
+          }
+
+          if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+            throw new Error("Timed out waiting for Across relayer to fill");
+          }
+
+          const status = await pollAcrossStatus(
+            sourceChain,
+            depositId,
+            abortController.signal,
+          );
+          pollAttempt++;
+
+          if (status.status === "filled") {
+            setState((s) => ({
+              ...s,
+              status: "complete",
+              fillTxHash: status.fillTxHash as `0x${string}` | undefined,
+              fillStatusMessage: undefined,
+            }));
+            return;
+          }
+
+          if (status.status === "expired") {
+            throw new Error("Across deposit expired without fill");
+          }
+
+          // Pending — wait and retry
+          const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+          setState((s) => ({
+            ...s,
+            fillStatusMessage: `Filling on destination (${elapsed}s, attempt ${pollAttempt})`,
+          }));
+
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+      } catch (err) {
+        setState((s) => ({
+          ...s,
+          status: "error",
+          errorMessage: friendlyError(err),
+        }));
+      } finally {
+        abortRef.current = null;
+      }
+    },
+    [address, walletClient, publicClient, switchChainAsync],
+  );
+
+  return { state, bridge, reset };
+}

@@ -5,12 +5,13 @@
 import { Quote, QuoteRequest, QuoteListResult } from "./types";
 import { getCctpQuote } from "./cctp";
 import { getRelayQuote } from "./relay";
+import { getAcrossQuote } from "./across";
 
-const QUOTE_TIMEOUT_MS = 5000;
+const QUOTE_TIMEOUT_MS = 8000;
 
 /**
  * Fetch quotes from all enabled providers in parallel
- * Each quote has a timeout of 5s — slow providers don't block fast ones
+ * Each quote has a timeout — slow providers don't block fast ones
  */
 export async function getAllQuotes(
   request: QuoteRequest,
@@ -25,9 +26,16 @@ export async function getAllQuotes(
     clearTimeout(relayTimer),
   );
 
-  const [relayQuote] = await Promise.all([relayPromise]);
+  // Across needs API call with timeout
+  const acrossController = new AbortController();
+  const acrossTimer = setTimeout(() => acrossController.abort(), QUOTE_TIMEOUT_MS);
+  const acrossPromise = getAcrossQuote(request, acrossController.signal).finally(() =>
+    clearTimeout(acrossTimer),
+  );
 
-  const quotes: Quote[] = [cctpQuote, relayQuote];
+  const [relayQuote, acrossQuote] = await Promise.all([relayPromise, acrossPromise]);
+
+  const quotes: Quote[] = [cctpQuote, relayQuote, acrossQuote];
 
   // Compute "best" quotes
   const available = quotes.filter((q) => q.status === "available");
