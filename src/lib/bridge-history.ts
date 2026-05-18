@@ -54,8 +54,15 @@ export function saveBridgeHistory(address: string, records: BridgeRecord[]) {
 
 export function addBridgeRecord(address: string, record: BridgeRecord) {
   const existing = loadBridgeHistory(address);
-  // Replace if same id exists (update from pending → complete)
-  const filtered = existing.filter((r) => r.id !== record.id);
+  // Dedupe by id (update from pending → complete) AND by burnTxHash (resume case:
+  // new "complete" record overrides previous "failed" record for same on-chain burn).
+  const filtered = existing.filter((r) => {
+    if (r.id === record.id) return false;
+    if (record.burnTxHash && r.burnTxHash && r.burnTxHash === record.burnTxHash) {
+      return false;
+    }
+    return true;
+  });
   saveBridgeHistory(address, [...filtered, record]);
 }
 

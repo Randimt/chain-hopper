@@ -89,6 +89,13 @@ export function BridgeForm() {
   const { state, approve, bridge, resume, reset } = useBridge();
   const recordIdRef = useRef<string | null>(null);
   const recordStartedAtRef = useRef<number>(0);
+  // Captured source/dest/amount snapshot at burn-start time. Resume() may run with
+  // different form state than the original bridge, so we lock these in when burning starts.
+  const recordMetaRef = useRef<{
+    sourceChain: number;
+    destChain: number;
+    amount: string;
+  } | null>(null);
 
   // Load pending bridge from localStorage on mount / wallet change
   useEffect(() => {
@@ -100,9 +107,16 @@ export function BridgeForm() {
     setPendingBridge(pending);
   }, [address]);
 
-  // Save burn tx to localStorage as soon as it lands
+  // Save burn tx to localStorage as soon as it lands.
+  // Guard with status === "burning" so it doesn't re-fire after resume completes
+  // (when state still has burnTxHash but pendingBridge was just cleared).
   useEffect(() => {
-    if (state.burnTxHash && address && !pendingBridge) {
+    if (
+      state.burnTxHash &&
+      address &&
+      !pendingBridge &&
+      state.status === "burning"
+    ) {
       const data: PendingBridge = {
         sourceChain,
         destChain,
@@ -113,7 +127,7 @@ export function BridgeForm() {
       savePendingBridge(address, data);
       setPendingBridge(data);
     }
-  }, [state.burnTxHash, address, pendingBridge, sourceChain, destChain, amount]);
+  }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount]);
 
   // Clear pending after successful complete
   useEffect(() => {
@@ -134,26 +148,35 @@ export function BridgeForm() {
       toast.success("USDC approved");
     } else if (curr === "burning" && prev !== "burning") {
       toast.loading("Burning USDC on source chain", { id: "bridge-progress" });
-      // Start tracking new bridge record
+      // Start tracking new bridge record + lock in metadata snapshot
       if (!recordIdRef.current) {
         recordIdRef.current = generateBridgeId();
         recordStartedAtRef.current = Date.now();
       }
+      recordMetaRef.current = { sourceChain, destChain, amount };
     } else if (curr === "attesting" && prev !== "attesting") {
       toast.loading("Waiting for Circle attestation", { id: "bridge-progress" });
+      // Resume() jumps straight here without going through "burning". Initialize
+      // record tracking now so completes/errors after resume still get saved.
+      if (!recordIdRef.current) {
+        recordIdRef.current = generateBridgeId();
+        recordStartedAtRef.current = Date.now();
+      }
     } else if (curr === "minting" && prev !== "minting") {
       toast.loading("Minting on destination chain", { id: "bridge-progress" });
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC minted");
-      // Save successful bridge record
+      // Save successful bridge record. Use captured metadata when available
+      // (resume case: form fields may have drifted since the original burn).
       if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? { sourceChain, destChain, amount };
         const record: BridgeRecord = {
           id: recordIdRef.current,
           provider: "cctp",
-          sourceChain,
-          destChain,
-          amount,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
           status: "complete",
           approveTxHash: state.approveTxHash,
           burnTxHash: state.burnTxHash,
@@ -165,18 +188,20 @@ export function BridgeForm() {
         // Notify history component to refresh
         window.dispatchEvent(new Event("bridge-history-updated"));
         recordIdRef.current = null;
+        recordMetaRef.current = null;
       }
     } else if (curr === "error") {
       toast.dismiss("bridge-progress");
       toast.error(state.errorMessage || "Bridge failed");
       // Save failed bridge record (if we got past burning)
       if (address && recordIdRef.current) {
+        const meta = recordMetaRef.current ?? { sourceChain, destChain, amount };
         const record: BridgeRecord = {
           id: recordIdRef.current,
           provider: "cctp",
-          sourceChain,
-          destChain,
-          amount,
+          sourceChain: meta.sourceChain,
+          destChain: meta.destChain,
+          amount: meta.amount,
           status: "failed",
           approveTxHash: state.approveTxHash,
           burnTxHash: state.burnTxHash,
@@ -188,6 +213,7 @@ export function BridgeForm() {
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
         recordIdRef.current = null;
+        recordMetaRef.current = null;
       }
     }
 
@@ -269,6 +295,13 @@ export function BridgeForm() {
   const handleBridge = () => bridge({ sourceChain, destChain, amount });
   const handleResume = () => {
     if (!pendingBridge) return;
+    // Capture metadata from the pending bridge BEFORE resume() runs.
+    // The "attesting" useEffect will pick this up since recordIdRef is null at start.
+    recordMetaRef.current = {
+      sourceChain: pendingBridge.sourceChain,
+      destChain: pendingBridge.destChain,
+      amount: pendingBridge.amount,
+    };
     resume({
       sourceChain: pendingBridge.sourceChain,
       destChain: pendingBridge.destChain,
