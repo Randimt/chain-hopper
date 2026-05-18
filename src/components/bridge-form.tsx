@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
+import toast from "react-hot-toast";
 import { ChainSelector } from "./chain-selector";
+import { TxTracker } from "./tx-tracker";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { useBridge } from "@/hooks/useBridge";
 
@@ -117,6 +119,32 @@ export function BridgeForm() {
       setPendingBridge(null);
     }
   }, [state.status, address]);
+
+  // Toast feedback on key state transitions (track previous status to fire once)
+  const prevStatusRef = useRef<string>("idle");
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const curr = state.status;
+    if (prev === curr) return;
+
+    if (curr === "approved" && prev === "approving") {
+      toast.success("USDC approved");
+    } else if (curr === "burning" && prev !== "burning") {
+      toast.loading("Burning USDC on source chain", { id: "bridge-progress" });
+    } else if (curr === "attesting" && prev !== "attesting") {
+      toast.loading("Waiting for Circle attestation", { id: "bridge-progress" });
+    } else if (curr === "minting" && prev !== "minting") {
+      toast.loading("Minting on destination chain", { id: "bridge-progress" });
+    } else if (curr === "complete") {
+      toast.dismiss("bridge-progress");
+      toast.success("Bridge complete — USDC minted");
+    } else if (curr === "error") {
+      toast.dismiss("bridge-progress");
+      toast.error(state.errorMessage || "Bridge failed");
+    }
+
+    prevStatusRef.current = curr;
+  }, [state.status, state.errorMessage]);
 
   const handleSourceChange = (chainId: number) => {
     setSourceChain(chainId);
@@ -248,7 +276,8 @@ export function BridgeForm() {
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 space-y-6">
+    <>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6 space-y-5 sm:space-y-6">
       {/* From Chain */}
       <div className="space-y-3">
         <ChainSelector
@@ -443,6 +472,15 @@ export function BridgeForm() {
       <p className="text-xs text-zinc-600 text-center">
         Phase 1 · CCTP V2 testnet · Fast Transfer enabled
       </p>
-    </div>
+      </div>
+
+      {/* Floating tx tracker — shows during/after bridge flow */}
+      <TxTracker
+        state={state}
+        sourceChain={sourceChain}
+        destChain={destChain}
+        onClose={() => reset()}
+      />
+    </>
   );
 }

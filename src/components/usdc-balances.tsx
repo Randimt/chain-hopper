@@ -3,6 +3,7 @@
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
 import { USDC_ADDRESSES, CHAIN_INFO } from "@/lib/wagmi";
+import { BalanceSkeleton } from "./balance-skeleton";
 
 const CHAIN_IDS = Object.keys(USDC_ADDRESSES).map(Number);
 
@@ -38,11 +39,7 @@ export function UsdcBalances() {
   }
 
   if (isLoading) {
-    return (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 text-center">
-        <p className="text-zinc-400">Loading balances...</p>
-      </div>
-    );
+    return <BalanceSkeleton />;
   }
 
   if (error) {

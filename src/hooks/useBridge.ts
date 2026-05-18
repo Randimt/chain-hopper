@@ -21,6 +21,7 @@ import {
   FINALITY_FAST,
 } from "@/lib/cctp";
 import { pollAttestation } from "@/lib/circle-api";
+import { friendlyError } from "@/lib/error-messages";
 
 // Resolve a Chain object by chain id — used to pass explicit chain to writeContract
 // (walletClient.chain is stale right after switchChainAsync, so we can't trust it)
@@ -118,10 +119,9 @@ export function useBridge() {
 
         setState({ status: "approved", approveTxHash: txHash });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
         setState({
           status: "error",
-          errorMessage: msg.includes("User rejected") ? "Approval rejected" : msg,
+          errorMessage: friendlyError(err),
         });
       }
     },
@@ -223,11 +223,10 @@ export function useBridge() {
             console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
           });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
         setState((s) => ({
           ...s,
           status: "error",
-          errorMessage: msg.includes("User rejected") ? "Transaction rejected" : msg,
+          errorMessage: friendlyError(err),
         }));
       } finally {
         abortRef.current = null;
@@ -292,11 +291,10 @@ export function useBridge() {
 
         setState((s) => ({ ...s, status: "complete" }));
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
         setState((s) => ({
           ...s,
           status: "error",
-          errorMessage: msg.includes("User rejected") ? "Transaction rejected" : msg,
+          errorMessage: friendlyError(err),
         }));
       } finally {
         abortRef.current = null;
