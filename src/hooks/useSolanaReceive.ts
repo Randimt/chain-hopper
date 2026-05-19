@@ -187,29 +187,11 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
         `[useSolanaReceive] sending receiveMessage tx${setupTx ? " (2/2)" : ""}...`
       );
 
-      // Simulate first to surface real Solana program errors
-      // (Phantom's "Unexpected error" hides the actual cause)
-      try {
-        const simResult = await connection.simulateTransaction(receiveTx, {
-          sigVerify: false,
-          commitment: "confirmed",
-        });
-        if (simResult.value.err) {
-          console.error("[useSolanaReceive] simulation failed:", simResult.value.err);
-          console.error("[useSolanaReceive] simulation logs:", simResult.value.logs);
-          const logs = simResult.value.logs?.join("\n") ?? "";
-          throw new Error(
-            `Solana simulation: ${JSON.stringify(simResult.value.err)} — ${logs.slice(-300)}`
-          );
-        }
-        console.log("[useSolanaReceive] simulation OK, CU used:", simResult.value.unitsConsumed);
-      } catch (simErr) {
-        // Re-throw with more context
-        throw simErr;
-      }
-
+      // Use skipPreflight: false so Solana validator simulates and rejects
+      // bad txs before sending. The wallet adapter will throw with the
+      // simulation logs in the error.logs property (we extract below in catch).
       const signature = await sendTransaction(receiveTx, connection, {
-        skipPreflight: true, // Skip preflight since we already simulated
+        skipPreflight: false,
         maxRetries: 3,
       });
 
@@ -241,7 +223,12 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
       setState({ status: "complete", txSignature: signature });
       return signature;
     } catch (e) {
-      const errMsg = humanizeError(e);
+      // Solana SendTransactionError attaches simulation logs as e.logs
+      const errAny = e as { logs?: string[]; message?: string };
+      if (errAny.logs && errAny.logs.length > 0) {
+        console.error("[useSolanaReceive] tx logs:", errAny.logs);
+      }
+      const errMsg = humanizeError(e, errAny.logs);
       console.error("[useSolanaReceive] signAndSend error:", e);
       setState({ status: "error", error: errMsg });
       return undefined;
@@ -254,8 +241,18 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
 /**
  * Convert Solana program errors into friendlier messages.
  */
-function humanizeError(e: unknown): string {
+function humanizeError(e: unknown, logs?: string[]): string {
   const msg = e instanceof Error ? e.message : String(e);
+
+  // Extract program error from logs if available
+  if (logs && logs.length > 0) {
+    const errLog = logs.find((l) => /Error|failed|insufficient|exceeded/i.test(l));
+    if (errLog) {
+      // Surface the real program error message + first few logs for context
+      const lastLogs = logs.slice(-5).join(" | ");
+      return `${errLog.slice(0, 100)} (logs: ${lastLogs.slice(0, 300)})`;
+    }
+  }
 
   if (/User rejected/i.test(msg) || /WalletSignTransactionError/i.test(msg)) {
     return "Transaction signing cancelled in wallet";
