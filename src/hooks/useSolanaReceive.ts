@@ -30,6 +30,49 @@ import { PublicKey, Transaction } from "@solana/web3.js";
 
 import { buildReceiveMessageTransaction } from "@/lib/cctp/solana-receive";
 
+/**
+ * Sign + manually submit a Solana tx via raw RPC.
+ *
+ * Why not sendTransaction (the adapter helper):
+ *   Some wallets (Solflare, sometimes Phantom) run a strict local preflight
+ *   simulation and surface only "Internal error" on failure, hiding logs.
+ *   By using signTransaction + sendRawTransaction with skipPreflight=true,
+ *   we bypass the wallet's preflight entirely. We pre-simulate ourselves
+ *   beforehand so users get the REAL error if the tx is bad.
+ */
+async function signAndSubmit(params: {
+  tx: Transaction;
+  signTransaction: (tx: Transaction) => Promise<Transaction>;
+  connection: import("@solana/web3.js").Connection;
+}): Promise<string> {
+  const { tx, signTransaction, connection } = params;
+
+  // Pre-simulate to surface real errors BEFORE asking user to sign
+  // (cheap RPC call, gives us program logs without consuming gas)
+  const sim = await connection.simulateTransaction(tx);
+  if (sim.value.err) {
+    const logs = sim.value.logs ?? [];
+    const errStr = JSON.stringify(sim.value.err);
+    const e = new Error(`Pre-simulation failed: ${errStr}`) as Error & {
+      logs?: string[];
+    };
+    e.logs = logs;
+    throw e;
+  }
+
+  const signed = await signTransaction(tx);
+  const rawTx = signed.serialize();
+
+  // skipPreflight=true: we already simulated; avoid double-sim that some
+  // RPC nodes mis-handle. maxRetries handles transient blockhash issues.
+  const sig = await connection.sendRawTransaction(rawTx, {
+    skipPreflight: true,
+    maxRetries: 3,
+  });
+
+  return sig;
+}
+
 export type SolanaReceiveStatus =
   | "idle"
   | "building"
@@ -63,7 +106,7 @@ export interface UseSolanaReceiveResult extends SolanaReceiveState {
 
 export function useSolanaReceive(): UseSolanaReceiveResult {
   const { connection } = useConnection();
-  const { publicKey, sendTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, connected } = useWallet();
   const [state, setState] = useState<SolanaReceiveState>({ status: "idle" });
   const setupTxRef = useRef<Transaction | null>(null);
   const receiveTxRef = useRef<Transaction | null>(null);
@@ -135,6 +178,12 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
       return;
     }
 
+    if (!signTransaction) {
+      const err = "Wallet doesn't support signTransaction";
+      setState({ status: "error", error: err });
+      return;
+    }
+
     const setupTx = setupTxRef.current;
     const receiveTx = receiveTxRef.current;
     if (!receiveTx) {
@@ -150,11 +199,12 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
         setState({ status: "creating-ata", needsAtaCreation: true });
         console.log("[useSolanaReceive] sending ATA creation tx (1/2)...");
 
-        const setupSig = await sendTransaction(setupTx, connection, {
-          skipPreflight: false,
-          maxRetries: 3,
+        const setupSig = await signAndSubmit({
+          tx: setupTx,
+          signTransaction,
+          connection,
         });
-        console.log("[useSolanaReceive] ATA tx signed:", setupSig);
+        console.log("[useSolanaReceive] ATA tx submitted:", setupSig);
 
         setState({ status: "confirming-ata", needsAtaCreation: true });
         const setupBlockhash = await connection.getLatestBlockhash("confirmed");
@@ -187,15 +237,13 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
         `[useSolanaReceive] sending receiveMessage tx${setupTx ? " (2/2)" : ""}...`
       );
 
-      // Use skipPreflight: false so Solana validator simulates and rejects
-      // bad txs before sending. The wallet adapter will throw with the
-      // simulation logs in the error.logs property (we extract below in catch).
-      const signature = await sendTransaction(receiveTx, connection, {
-        skipPreflight: false,
-        maxRetries: 3,
+      const signature = await signAndSubmit({
+        tx: receiveTx,
+        signTransaction,
+        connection,
       });
 
-      console.log("[useSolanaReceive] receive tx signed:", signature);
+      console.log("[useSolanaReceive] receive tx submitted:", signature);
       setState({
         status: "confirming",
         txSignature: signature,
@@ -233,7 +281,7 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
       setState({ status: "error", error: errMsg });
       return undefined;
     }
-  }, [connected, publicKey, connection, sendTransaction]);
+  }, [connected, publicKey, connection, signTransaction]);
 
   return { ...state, prepare, signAndSend, reset };
 }
