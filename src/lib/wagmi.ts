@@ -81,6 +81,16 @@ export const edgeTestnet = defineChain({
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "demo";
 
+// Sonic Blaze viem default RPC (rpc.blaze.soniclabs.com) is dead.
+// Override with working public RPC.
+const sonicBlazeWithRpc = {
+  ...sonicBlazeTestnet,
+  rpcUrls: {
+    default: { http: ["https://rpc.testnet.soniclabs.com"] },
+    public: { http: ["https://rpc.testnet.soniclabs.com"] },
+  },
+};
+
 // Plix supported chains — ALL CCTP V2 testnets (22 total)
 // All chains support CCTP V2 burn-and-mint via TokenMessenger.
 export const config = getDefaultConfig({
@@ -101,7 +111,7 @@ export const config = getDefaultConfig({
     plumeSepolia,
     inkSepolia,
     worldchainSepolia,
-    sonicBlazeTestnet,
+    sonicBlazeWithRpc,
     seiTestnet,
     // Tier 3: Specialized / newer chains
     pharosTestnet,
@@ -170,7 +180,7 @@ export const CHAIN_MAP: Record<number, Chain> = {
   [plumeSepolia.id]: plumeSepolia,
   [inkSepolia.id]: inkSepolia,
   [worldchainSepolia.id]: worldchainSepolia,
-  [sonicBlazeTestnet.id]: sonicBlazeTestnet,
+  [sonicBlazeTestnet.id]: sonicBlazeWithRpc,
   [seiTestnet.id]: seiTestnet,
   [pharosTestnet.id]: pharosTestnet,
   [arcTestnet.id]: arcTestnet,
