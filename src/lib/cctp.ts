@@ -118,11 +118,12 @@ export function addressToBytes32(address: `0x${string}`): `0x${string}` {
 
 // Encode Solana Pubkey (base58, 32 bytes) → bytes32 hex for EVM mintRecipient
 // Used when bridging EVM → Solana: recipient is a Solana address.
-export function solanaPubkeyToBytes32(base58Address: string): `0x${string}` {
-  // Lazy-loaded to avoid heavy bundle in EVM-only flows
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const bs58 = require("bs58") as { decode: (s: string) => Uint8Array };
-  const bytes = bs58.decode(base58Address);
+// Uses @solana/web3.js PublicKey (handles base58 natively, bundler-safe).
+export async function solanaPubkeyToBytes32(
+  base58Address: string
+): Promise<`0x${string}`> {
+  const { PublicKey } = await import("@solana/web3.js");
+  const bytes = new PublicKey(base58Address).toBytes();
   if (bytes.length !== 32) {
     throw new Error(
       `Invalid Solana pubkey: expected 32 bytes, got ${bytes.length}`
@@ -136,9 +137,10 @@ export function solanaPubkeyToBytes32(base58Address: string): `0x${string}` {
 
 // Decode bytes32 hex → Solana Pubkey (base58)
 // Used when bridging Solana → EVM: source/dest fields decoded.
-export function bytes32ToSolanaPubkey(hex: `0x${string}`): string {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const bs58 = require("bs58") as { encode: (b: Uint8Array) => string };
+export async function bytes32ToSolanaPubkey(
+  hex: `0x${string}`
+): Promise<string> {
+  const { PublicKey } = await import("@solana/web3.js");
   const cleaned = hex.replace(/^0x/, "");
   if (cleaned.length !== 64) {
     throw new Error(
@@ -149,7 +151,7 @@ export function bytes32ToSolanaPubkey(hex: `0x${string}`): string {
   for (let i = 0; i < 32; i++) {
     bytes[i] = parseInt(cleaned.slice(i * 2, i * 2 + 2), 16);
   }
-  return bs58.encode(bytes);
+  return new PublicKey(bytes).toBase58();
 }
 
 // Derive Associated Token Account (ATA) for Solana USDC recipient.

@@ -166,7 +166,7 @@ export function useBridge() {
         if (destIsSolana) {
           // solanaRecipient guaranteed non-null by check above
           const ataBase58 = await deriveSolanaUsdcAta(solanaRecipient!);
-          mintRecipient = solanaPubkeyToBytes32(ataBase58);
+          mintRecipient = await solanaPubkeyToBytes32(ataBase58);
         } else {
           const recipientAddress = recipient || address;
           mintRecipient = addressToBytes32(recipientAddress);
