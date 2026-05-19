@@ -206,7 +206,8 @@ function encodeReceiveMessageData(
     },
   };
   // Anchor instruction encoding: discriminator + borsh args
-  const argsBuf = coder.instruction.encode("receiveMessage", args);
+  // IDL uses snake_case method names (Anchor 0.30+ format)
+  const argsBuf = coder.instruction.encode("receive_message", args);
   return argsBuf;
 }
 
