@@ -12,7 +12,6 @@ import {
   PublicKey,
   Transaction,
   TransactionInstruction,
-  ComputeBudgetProgram,
   SystemProgram,
 } from "@solana/web3.js";
 import {
@@ -289,10 +288,11 @@ export async function buildReceiveMessageTransaction(params: {
     setupTx.feePayer = payer;
   }
 
-  // Bump compute unit limit (default 200k is not enough for receiveMessage + CPI)
-  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: 400_000,
-  });
+  // NOTE: We intentionally OMIT ComputeBudgetProgram.setComputeUnitLimit here.
+  // Adding it pushes the tx over Solana's 1232-byte size limit (1264 observed).
+  // CCTP V2 receiveMessage on Solana fits within the default 200k CU budget
+  // for typical burn-mint flows. If we ever hit "exceeded compute units" errors,
+  // we'll need to migrate to VersionedTransaction with an Address Lookup Table.
 
   // Fixed accounts (9 total)
   const fixedAccounts = [
@@ -331,7 +331,6 @@ export async function buildReceiveMessageTransaction(params: {
   });
 
   const receiveTx = new Transaction();
-  receiveTx.add(computeBudgetIx);
   receiveTx.add(receiveMessageIx);
   receiveTx.recentBlockhash = blockhash;
   receiveTx.feePayer = payer;
