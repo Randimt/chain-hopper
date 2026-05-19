@@ -25,11 +25,72 @@
  *   7. Return BridgeResult with full step history for UI display.
  */
 
-import { useCallback, useState } from "react";
-import { useAccount, useConnectorClient } from "wagmi";
-import { useWallet, useConnection } from "@solana/wallet-adapter-react";
+import { useCallback, useState, useMemo } from "react";
+import { useAccount } from "wagmi";
+import {
+  useWallet,
+  useConnection,
+  type WalletContextState,
+} from "@solana/wallet-adapter-react";
+import type { Transaction, VersionedTransaction } from "@solana/web3.js";
 
-import { CHAIN_INFO, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
+import { SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
+
+/**
+ * Wrap @solana/wallet-adapter-react state into the shape Circle SDK expects:
+ *   { isConnected, publicKey, connect(), disconnect(), signTransaction(), signMessage() }
+ *
+ * The wallet-adapter `wallet.adapter` object exposes similar methods but with a
+ * slightly different shape (no isConnected getter, publicKey is a getter).
+ * Circle's SolanaAdapter validates `provider.isConnected` as a required field.
+ */
+function buildSolanaProvider(wallet: WalletContextState) {
+  return {
+    get isConnected() {
+      return Boolean(wallet.connected && wallet.publicKey);
+    },
+    get publicKey() {
+      return wallet.publicKey
+        ? { toString: () => wallet.publicKey!.toBase58() }
+        : undefined;
+    },
+    async connect() {
+      if (!wallet.connected) {
+        await wallet.connect();
+      }
+      if (!wallet.publicKey) {
+        throw new Error("Solana wallet has no public key after connect");
+      }
+      return { publicKey: { toString: () => wallet.publicKey!.toBase58() } };
+    },
+    async disconnect() {
+      await wallet.disconnect();
+    },
+    async signTransaction(
+      tx: Transaction | VersionedTransaction
+    ): Promise<Transaction | VersionedTransaction> {
+      if (!wallet.signTransaction) {
+        throw new Error("Wallet does not support signTransaction");
+      }
+      return wallet.signTransaction(tx);
+    },
+    async signAllTransactions(
+      txs: (Transaction | VersionedTransaction)[]
+    ): Promise<(Transaction | VersionedTransaction)[]> {
+      if (!wallet.signAllTransactions) {
+        throw new Error("Wallet does not support signAllTransactions");
+      }
+      return wallet.signAllTransactions(txs);
+    },
+    async signMessage(msg: Uint8Array): Promise<{ signature: Uint8Array }> {
+      if (!wallet.signMessage) {
+        throw new Error("Wallet does not support signMessage");
+      }
+      const sig = await wallet.signMessage(msg);
+      return { signature: sig };
+    },
+  };
+}
 
 export type CircleBridgeStatus =
   | "idle"
@@ -60,51 +121,53 @@ export interface UseCircleBridgeArgs {
 }
 
 /**
- * Map our wagmi chainId to Circle's chain name string.
- * Circle SDK uses string names like "Ethereum Sepolia", "Arc Testnet", etc.
+ * Map our wagmi chainId to Circle's BridgeChain enum value.
+ * Circle SDK uses underscore_separated names like "Ethereum_Sepolia".
  */
 function chainIdToCircleName(chainId: number): string | null {
   // Solana synthetic id
-  if (chainId === SOLANA_DEVNET_CHAIN_ID) return "Solana Devnet";
+  if (chainId === SOLANA_DEVNET_CHAIN_ID) return "Solana_Devnet";
 
-  // Map from our CHAIN_INFO to Circle's naming
-  const info = CHAIN_INFO[chainId];
-  if (!info) return null;
-
-  // Circle uses specific testnet names — map the common ones
   const map: Record<number, string> = {
-    11155111: "Ethereum Sepolia",
-    84532: "Base Sepolia",
-    421614: "Arbitrum Sepolia",
-    11155420: "OP Sepolia",
-    80002: "Polygon PoS Amoy",
-    43113: "Avalanche Fuji",
-    59141: "Linea Sepolia",
-    1301: "Unichain Sepolia",
-    4801: "World Chain Sepolia",
-    763373: "Ink Testnet",
-    2810: "Morph Testnet",
-    1924: "Plume Testnet",
-    1328: "Sei Testnet",
-    14601: "Sonic Testnet",
-    98985: "Pharos Atlantic",
-    685685: "Codex Testnet",
-    50_002: "XDC Apothem",
-    10143: "Monad Testnet",
-    1338: "Edge Testnet",
-    944: "Arc Testnet",
-    1075: "Injective Testnet",
-    998: "HyperEVM Testnet",
+    11155111: "Ethereum_Sepolia",
+    84532: "Base_Sepolia",
+    421614: "Arbitrum_Sepolia",
+    11155420: "Optimism_Sepolia",
+    80002: "Polygon_Amoy_Testnet",
+    43113: "Avalanche_Fuji",
+    59141: "Linea_Sepolia",
+    1301: "Unichain_Sepolia",
+    4801: "World_Chain_Sepolia",
+    763373: "Ink_Testnet",
+    2810: "Morph_Testnet",
+    1924: "Plume_Testnet",
+    1328: "Sei_Testnet",
+    14601: "Sonic_Testnet",
+    98985: "Pharos_Testnet",
+    685685: "Codex_Testnet",
+    50_002: "XDC_Apothem",
+    10143: "Monad_Testnet",
+    1338: "Edge_Testnet",
+    944: "Arc_Testnet",
+    1075: "Injective_Testnet",
+    998: "HyperEVM_Testnet",
   };
 
-  return map[chainId] ?? info.name;
+  return map[chainId] ?? null;
 }
 
 export function useCircleBridge() {
   const { connector } = useAccount();
-  const { data: connectorClient } = useConnectorClient();
   const { connection: solanaConnection } = useConnection();
-  const { wallet: solanaWallet, publicKey: solanaPublicKey } = useWallet();
+  const wallet = useWallet();
+  const { wallet: solanaWallet, publicKey: solanaPublicKey } = wallet;
+
+  // Memoize the wrapper so it's stable across renders (Circle SDK may keep refs)
+  const solanaProvider = useMemo(
+    () => buildSolanaProvider(wallet),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wallet.connected, wallet.publicKey, solanaWallet?.adapter]
+  );
 
   const [state, setState] = useState<CircleBridgeState>({
     status: "idle",
@@ -121,7 +184,7 @@ export function useCircleBridge() {
         setState({ status: "preparing", steps: [] });
 
         // Validate prerequisites
-        if (!connector || !connectorClient) {
+        if (!connector) {
           throw new Error("EVM wallet not connected");
         }
         if (!solanaWallet?.adapter) {
@@ -138,7 +201,7 @@ export function useCircleBridge() {
 
         // Lazy-load SDK — keeps initial bundle smaller for non-Solana flows
         const [
-          { BridgeKit, BridgeStateEnum: _ },
+          { BridgeKit },
           { createViemAdapterFromProvider },
           { createSolanaAdapterFromProvider },
         ] = await Promise.all([
@@ -155,9 +218,9 @@ export function useCircleBridge() {
           provider: eip1193Provider as any,
         });
 
-        // Get Solana provider from wallet adapter
-        const solanaProvider = solanaWallet.adapter;
-
+        // Solana adapter expects a SolanaWalletProvider-shaped object
+        // (with isConnected, publicKey, connect, disconnect, signTransaction).
+        // Our wrapper adapts wallet-adapter-react state to that shape.
         const solanaAdapter = createSolanaAdapterFromProvider({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provider: solanaProvider as any,
@@ -169,10 +232,13 @@ export function useCircleBridge() {
         setState({ status: "bridging", steps: [] });
 
         const result = await kit.bridge({
-          from: { adapter: evmAdapter, chain: sourceCircleName },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          from: { adapter: evmAdapter as any, chain: sourceCircleName as any },
           to: {
-            adapter: solanaAdapter,
-            chain: "Solana Devnet",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            adapter: solanaAdapter as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            chain: "Solana_Devnet" as any,
             ...(recipientAddress && recipientAddress !== solanaPublicKey.toBase58()
               ? { recipientAddress }
               : {}),
@@ -221,7 +287,7 @@ export function useCircleBridge() {
         throw e;
       }
     },
-    [connector, connectorClient, solanaConnection, solanaWallet, solanaPublicKey]
+    [connector, solanaConnection, solanaWallet, solanaPublicKey, solanaProvider]
   );
 
   return {
