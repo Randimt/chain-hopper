@@ -241,6 +241,12 @@ export async function buildReceiveMessageTransaction(params: {
   // Recipient USDC ATA — must exist before receiveMessage is called
   const recipientAta = getAssociatedTokenAddressSync(usdcMint, recipient, true);
 
+  // Check if recipient ATA exists on-chain. If yes, skip creation ix to stay
+  // under Solana's 1232-byte tx size limit. ATA creation adds ~170 bytes
+  // (overlapping accounts plus ~12 bytes instruction data).
+  const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
+  const recipientAtaExists = recipientAtaInfo !== null;
+
   // Fee recipient ATA — fetched from on-chain TokenMessenger.fee_recipient
   const feeRecipientPubkey = await fetchFeeRecipient(connection, pdas.tokenMessenger);
   const feeRecipientAta = getAssociatedTokenAddressSync(
@@ -249,13 +255,15 @@ export async function buildReceiveMessageTransaction(params: {
     true
   );
 
-  // Idempotent ATA creation — safe if already exists
-  const ataIx = createAssociatedTokenAccountIdempotentInstruction(
-    payer,
-    recipientAta,
-    recipient,
-    usdcMint
-  );
+  // Idempotent ATA creation — only emit if account doesn't exist yet
+  const ataIx = recipientAtaExists
+    ? null
+    : createAssociatedTokenAccountIdempotentInstruction(
+        payer,
+        recipientAta,
+        recipient,
+        usdcMint
+      );
 
   // Bump compute unit limit (default 200k is not enough for receiveMessage + CPI)
   const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
@@ -300,7 +308,9 @@ export async function buildReceiveMessageTransaction(params: {
 
   const tx = new Transaction();
   tx.add(computeBudgetIx);
-  tx.add(ataIx);
+  if (ataIx) {
+    tx.add(ataIx);
+  }
   tx.add(receiveMessageIx);
 
   const { blockhash } = await connection.getLatestBlockhash("confirmed");
