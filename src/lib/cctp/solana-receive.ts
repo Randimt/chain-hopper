@@ -55,12 +55,15 @@ export function decodeSourceDomain(messageHex: string): number {
 
 /**
  * Decode the burn token address (32 bytes) from a CCTP V2 burn message.
- * Layout: bytes [148..180] of the message body contain burnToken.
- * (Header is 148 bytes, then BurnMessage starts.)
+ * Layout:
+ *   - Message header is 148 bytes
+ *   - BurnMessage body starts at offset 148:
+ *     - bodyVersion (4 bytes) [148..152]
+ *     - burnToken   (32 bytes) [152..184]  ← THIS
  */
 export function decodeBurnToken(messageHex: string): Buffer {
   const cleaned = messageHex.replace(/^0x/, "");
-  return Buffer.from(cleaned, "hex").subarray(148, 180);
+  return Buffer.from(cleaned, "hex").subarray(152, 184);
 }
 
 /**
