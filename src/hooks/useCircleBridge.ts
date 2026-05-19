@@ -203,11 +203,12 @@ export function useCircleBridge() {
         const [
           { BridgeKit },
           { createViemAdapterFromProvider },
-          { createSolanaAdapterFromProvider },
+          { createSolanaAdapterFromProvider, SolanaDevnet },
         ] = await Promise.all([
           import("@circle-fin/bridge-kit"),
           import("@circle-fin/adapter-viem-v2"),
-          import("@circle-fin/adapter-solana"),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          import("@circle-fin/adapter-solana") as any,
         ]);
 
         // Get EIP1193 provider from wagmi connector (MetaMask, Rabby, etc.)
@@ -221,10 +222,17 @@ export function useCircleBridge() {
         // Solana adapter expects a SolanaWalletProvider-shaped object
         // (with isConnected, publicKey, connect, disconnect, signTransaction).
         // Our wrapper adapts wallet-adapter-react state to that shape.
-        const solanaAdapter = createSolanaAdapterFromProvider({
+        // IMPORTANT: createSolanaAdapterFromProvider IS ASYNC — must await.
+        // Override default chain (mainnet) to Devnet via capabilities.
+        const solanaAdapter = await createSolanaAdapterFromProvider({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provider: solanaProvider as any,
           connection: solanaConnection,
+          capabilities: {
+            addressContext: "user-controlled",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supportedChains: [SolanaDevnet] as any,
+          },
         });
 
         const kit = new BridgeKit();
