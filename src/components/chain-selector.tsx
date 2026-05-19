@@ -12,6 +12,8 @@ interface ChainSelectorProps {
   onChange: (chainId: number) => void;
   exclude?: number;
   label?: string;
+  /** When true, Solana Devnet is selectable (used for destination only). */
+  allowSolana?: boolean;
 }
 
 const TYPE_BADGE_STYLE: Record<ChainType, string> = {
@@ -27,18 +29,26 @@ export function ChainSelector({
   onChange,
   exclude,
   label,
+  allowSolana = false,
 }: ChainSelectorProps) {
   // Active EVM chains (CCTP-supported)
   const evmChainIds = Object.keys(USDC_ADDRESSES)
     .map(Number)
     .filter((id) => !exclude || id !== exclude);
 
-  // Coming-soon chains (Solana etc) — visible but disabled
+  // Coming-soon chains (Solana etc) — visible but disabled, unless allowSolana flips Solana enabled
   const comingSoonIds = Object.entries(CHAIN_INFO)
     .filter(([, info]) => info.comingSoon)
-    .map(([id]) => Number(id));
+    .map(([id]) => Number(id))
+    .filter((id) => !exclude || id !== exclude);
 
   const selectedInfo = CHAIN_INFO[value];
+
+  // Solana is "enabled" when allowSolana is true. Other comingSoon chains stay disabled.
+  const isComingSoonEnabled = (chainId: number) => {
+    if (!CHAIN_INFO[chainId]?.comingSoon) return true;
+    return allowSolana && chainId === SOLANA_DEVNET_CHAIN_ID;
+  };
 
   return (
     <div className="space-y-2">
@@ -51,7 +61,8 @@ export function ChainSelector({
         value={value}
         onChange={(e) => {
           const next = Number(e.target.value);
-          if (CHAIN_INFO[next]?.comingSoon) return; // safety guard
+          // Block selecting a still-disabled comingSoon chain
+          if (CHAIN_INFO[next]?.comingSoon && !isComingSoonEnabled(next)) return;
           onChange(next);
         }}
         className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-200 focus:border-blue-500 focus:outline-none cursor-pointer"
@@ -65,12 +76,24 @@ export function ChainSelector({
           );
         })}
         {comingSoonIds.length > 0 && (
-          <optgroup label="── Coming Soon ──">
+          <optgroup
+            label={
+              allowSolana
+                ? "── Cross-VM (beta) ──"
+                : "── Coming Soon ──"
+            }
+          >
             {comingSoonIds.map((chainId) => {
               const info = CHAIN_INFO[chainId];
+              const enabled = isComingSoonEnabled(chainId);
               return (
-                <option key={chainId} value={chainId} disabled>
-                  {info.logo} {info.name} · {info.type} — Coming Soon
+                <option
+                  key={chainId}
+                  value={chainId}
+                  disabled={!enabled}
+                >
+                  {info.logo} {info.name} · {info.type}
+                  {enabled ? " — Beta" : " — Coming Soon"}
                 </option>
               );
             })}
@@ -88,7 +111,12 @@ export function ChainSelector({
           >
             {selectedInfo.type}
           </span>
-          {selectedInfo.comingSoon && (
+          {selectedInfo.comingSoon && allowSolana && value === SOLANA_DEVNET_CHAIN_ID && (
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-medium bg-purple-500/10 text-purple-400 border-purple-500/30">
+              Beta · Connect Phantom
+            </span>
+          )}
+          {selectedInfo.comingSoon && !(allowSolana && value === SOLANA_DEVNET_CHAIN_ID) && (
             <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-medium bg-purple-500/10 text-purple-400 border-purple-500/30">
               Coming Soon
             </span>

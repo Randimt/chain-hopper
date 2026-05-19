@@ -66,9 +66,10 @@ export const CCTP_DOMAINS: Record<number, number> = {
 
 // Solana CCTP V2 program addresses (devnet & mainnet — same IDs)
 // Source: https://developers.circle.com/cctp/solana-programs
+// VERIFIED: TokenMessengerMinter is the v2vPZ one (does the mint), MessageTransmitter is v2Sm4 (entry point)
 export const SOLANA_CCTP_PROGRAMS = {
-  tokenMessengerMinter: "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe",
   messageTransmitter: "CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC",
+  tokenMessengerMinter: "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe",
 } as const;
 
 // Solana Devnet USDC mint

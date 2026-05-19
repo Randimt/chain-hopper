@@ -10,6 +10,9 @@ import {
   MESSAGE_TRANSMITTER_V2_ABI,
   chainIdToDomain,
   addressToBytes32,
+  solanaPubkeyToBytes32,
+  deriveSolanaUsdcAta,
+  isSolanaChain,
   ZERO_BYTES32,
   FINALITY_FAST,
 } from "@/lib/cctp";
@@ -23,6 +26,7 @@ export type BridgeStatus =
   | "burning"
   | "attesting"
   | "minting"
+  | "awaiting-solana-receive"
   | "complete"
   | "error";
 
@@ -33,14 +37,22 @@ export interface BridgeState {
   mintTxHash?: `0x${string}`;
   attestationStatus?: string;
   errorMessage?: string;
+  /** For EVM → Solana: message + attestation handed off to Phantom flow */
+  solanaMessage?: string;
+  solanaAttestation?: string;
+  solanaRecipient?: string;
+  /** Solana receive tx signature (set by bridge-form after Phantom signs) */
+  solanaTxSignature?: string;
 }
 
 interface UseBridgeArgs {
   sourceChain: number;
   destChain: number;
   amount: string;
-  /** Optional recipient address — defaults to connected wallet */
+  /** Optional EVM recipient — defaults to connected wallet. Ignored when destChain is Solana. */
   recipient?: `0x${string}`;
+  /** Required when destChain is Solana: Phantom wallet pubkey (base58) */
+  solanaRecipient?: string;
 }
 
 interface ResumeBridgeArgs {
@@ -116,9 +128,19 @@ export function useBridge() {
 
   // Step 2-4: Burn on source → poll attestation → Mint on destination
   const bridge = useCallback(
-    async ({ sourceChain, destChain, amount, recipient }: UseBridgeArgs) => {
+    async ({ sourceChain, destChain, amount, recipient, solanaRecipient }: UseBridgeArgs) => {
       if (!address || !walletClient || !publicClient) {
         setState({ status: "error", errorMessage: "Wallet not connected" });
+        return;
+      }
+
+      const destIsSolana = isSolanaChain(destChain);
+
+      if (destIsSolana && !solanaRecipient) {
+        setState({
+          status: "error",
+          errorMessage: "Connect Phantom wallet to bridge to Solana",
+        });
         return;
       }
 
@@ -135,9 +157,21 @@ export function useBridge() {
 
         const sourceUsdc = USDC_ADDRESSES[sourceChain];
         const destDomain = chainIdToDomain(destChain);
-        // Use custom recipient if provided, else default to connected wallet
-        const recipientAddress = recipient || address;
-        const mintRecipient = addressToBytes32(recipientAddress);
+
+        // Compute mintRecipient — encoding differs by destination type:
+        //   EVM dest:    bytes32 of EVM address (left-padded)
+        //   Solana dest: bytes32 of Solana ATA pubkey (NOT wallet pubkey!)
+        //                CCTP mints into ATA, not the wallet directly.
+        let mintRecipient: `0x${string}`;
+        if (destIsSolana) {
+          // solanaRecipient guaranteed non-null by check above
+          const ataBase58 = await deriveSolanaUsdcAta(solanaRecipient!);
+          mintRecipient = solanaPubkeyToBytes32(ataBase58);
+        } else {
+          const recipientAddress = recipient || address;
+          mintRecipient = addressToBytes32(recipientAddress);
+        }
+
         const amountWei = parseUnits(amount, 6);
 
         // Fast Transfer: maxFee >0 enables ~30s finality (small fee)
@@ -182,6 +216,21 @@ export function useBridge() {
         );
 
         // ============ STEP 4: receiveMessage on destination ============
+        if (destIsSolana) {
+          // Solana flow: hand off message + attestation to Phantom-signing hook.
+          // bridge-form.tsx watches for "awaiting-solana-receive" status and
+          // triggers useSolanaReceive.receive() with this payload.
+          setState((s) => ({
+            ...s,
+            status: "awaiting-solana-receive",
+            solanaMessage: attestation.message,
+            solanaAttestation: attestation.attestation,
+            solanaRecipient: solanaRecipient!,
+          }));
+          return;
+        }
+
+        // EVM flow: writeContract to MessageTransmitter on destination chain
         setState((s) => ({ ...s, status: "minting" }));
 
         await switchChainAsync({ chainId: destChain });
@@ -222,6 +271,15 @@ export function useBridge() {
     },
     [address, walletClient, publicClient, switchChainAsync]
   );
+
+  // Mark Solana receive complete (called by bridge-form after Phantom signs)
+  const markSolanaReceiveComplete = useCallback((signature: string) => {
+    setState((s) => ({
+      ...s,
+      status: "complete",
+      solanaTxSignature: signature,
+    }));
+  }, []);
 
   // Resume an interrupted bridge: skip burn, jump to attestation poll + mint
   const resume = useCallback(
@@ -291,5 +349,5 @@ export function useBridge() {
     [address, walletClient, publicClient, switchChainAsync]
   );
 
-  return { state, approve, bridge, resume, reset };
+  return { state, approve, bridge, resume, reset, markSolanaReceiveComplete };
 }

@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useAccount, useReadContract } from "wagmi";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
 import toast from "react-hot-toast";
@@ -9,10 +10,12 @@ import { ChainSelector } from "./chain-selector";
 import { TxTracker } from "./tx-tracker";
 import { QuoteList } from "./quote-list";
 import { SettingsDrawer } from "./settings-drawer";
-import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
+import { CHAIN_INFO, USDC_ADDRESSES, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
+import { isSolanaChain } from "@/lib/cctp";
 import { useBridge } from "@/hooks/useBridge";
 import { useRelayBridge } from "@/hooks/useRelayBridge";
 import { useAcrossBridge } from "@/hooks/useAcrossBridge";
+import { useSolanaReceive } from "@/hooks/useSolanaReceive";
 import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
 import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
@@ -95,7 +98,7 @@ export function BridgeForm() {
   const [selectedProvider, setSelectedProvider] = useState<QuoteProvider | null>(null);
   const [userPickedProvider, setUserPickedProvider] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
-  const { state, approve, bridge, resume, reset } = useBridge();
+  const { state, approve, bridge, resume, reset, markSolanaReceiveComplete } = useBridge();
   const {
     state: relayState,
     bridge: relayBridge,
@@ -106,6 +109,14 @@ export function BridgeForm() {
     bridge: acrossBridge,
     reset: acrossReset,
   } = useAcrossBridge();
+  const {
+    receive: solanaReceive,
+    reset: solanaReceiveReset,
+    status: solanaReceiveStatus,
+    txSignature: solanaReceiveTxSig,
+    error: solanaReceiveError,
+  } = useSolanaReceive();
+  const { publicKey: solanaPublicKey, connected: solanaConnected } = useWallet();
   const recordIdRef = useRef<string | null>(null);
   const recordStartedAtRef = useRef<number>(0);
   const recordMetaRef = useRef<{
@@ -212,6 +223,58 @@ export function BridgeForm() {
       setPendingBridge(data);
     }
   }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount]);
+
+  // ============ Solana receive flow trigger ============
+  // When CCTP burn+attestation finishes for a Solana destination, useBridge
+  // sets status to "awaiting-solana-receive" with message + attestation.
+  // This effect hands off to Phantom for the Solana-side mint.
+  const solanaReceiveTriggeredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      state.status !== "awaiting-solana-receive" ||
+      !state.solanaMessage ||
+      !state.solanaAttestation ||
+      !state.solanaRecipient
+    ) {
+      return;
+    }
+    // Idempotent: only trigger once per burn tx
+    const triggerKey = state.burnTxHash || "no-burn";
+    if (solanaReceiveTriggeredRef.current === triggerKey) return;
+    solanaReceiveTriggeredRef.current = triggerKey;
+
+    toast.loading("Awaiting Phantom signature", { id: "bridge-progress" });
+
+    solanaReceive({
+      messageHex: state.solanaMessage,
+      attestationHex: state.solanaAttestation,
+      recipient: state.solanaRecipient,
+    })
+      .then((sig) => {
+        if (sig) {
+          markSolanaReceiveComplete(sig);
+        }
+      })
+      .catch((err) => {
+        console.error("[Solana receive] failed:", err);
+      });
+  }, [
+    state.status,
+    state.solanaMessage,
+    state.solanaAttestation,
+    state.solanaRecipient,
+    state.burnTxHash,
+    solanaReceive,
+    markSolanaReceiveComplete,
+  ]);
+
+  // Reset Solana trigger ref when bridge restarts
+  useEffect(() => {
+    if (state.status === "idle") {
+      solanaReceiveTriggeredRef.current = null;
+      solanaReceiveReset();
+    }
+  }, [state.status, solanaReceiveReset]);
 
   // Clear pending after CCTP complete
   useEffect(() => {
@@ -551,16 +614,23 @@ export function BridgeForm() {
   const destInfo = CHAIN_INFO[destChain];
 
   // Combined processing state across all providers
-  const cctpProcessing = ["approving", "burning", "attesting", "minting"].includes(
-    state.status,
-  );
+  const cctpProcessing = [
+    "approving",
+    "burning",
+    "attesting",
+    "minting",
+    "awaiting-solana-receive",
+  ].includes(state.status);
   const relayProcessing = ["approving", "depositing", "filling"].includes(
     relayState.status,
   );
   const acrossProcessing = ["approving", "depositing", "filling"].includes(
     acrossState.status,
   );
-  const isProcessing = cctpProcessing || relayProcessing || acrossProcessing;
+  const solanaProcessing = ["building", "awaiting-signature", "confirming"].includes(
+    solanaReceiveStatus,
+  );
+  const isProcessing = cctpProcessing || relayProcessing || acrossProcessing || solanaProcessing;
 
   // CCTP-specific
   const isApproved = state.status === "approved";
@@ -593,8 +663,27 @@ export function BridgeForm() {
         ? (customRecipient as `0x${string}`)
         : undefined;
 
+    // Solana destination requires Phantom connected
+    const destIsSolana = isSolanaChain(destChain);
+    if (destIsSolana) {
+      if (selectedProvider !== "cctp") {
+        toast.error("Solana bridges require CCTP route");
+        return;
+      }
+      if (!solanaConnected || !solanaPublicKey) {
+        toast.error("Connect Phantom wallet first to bridge to Solana");
+        return;
+      }
+    }
+
     if (selectedProvider === "cctp") {
-      bridge({ sourceChain, destChain, amount, recipient });
+      bridge({
+        sourceChain,
+        destChain,
+        amount,
+        recipient,
+        solanaRecipient: destIsSolana ? solanaPublicKey!.toBase58() : undefined,
+      });
     } else if (selectedProvider === "relay") {
       relayBridge(selectedQuote);
     } else if (selectedProvider === "across") {
@@ -822,6 +911,7 @@ export function BridgeForm() {
             onChange={setDestChain}
             exclude={sourceChain}
             label="To"
+            allowSolana
           />
         </div>
 
