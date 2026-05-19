@@ -111,7 +111,8 @@ export function BridgeForm() {
     reset: acrossReset,
   } = useAcrossBridge();
   const {
-    receive: solanaReceive,
+    prepare: solanaPrepare,
+    signAndSend: solanaSignAndSend,
     reset: solanaReceiveReset,
     status: solanaReceiveStatus,
     txSignature: solanaReceiveTxSig,
@@ -228,48 +229,69 @@ export function BridgeForm() {
     }
   }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount, solanaPublicKey]);
 
-  // ============ Solana receive flow trigger (manual click) ============
-  // When CCTP burn+attestation finishes for a Solana destination, useBridge
-  // sets status to "awaiting-solana-receive" with message + attestation.
-  // We expose this as a button click handler instead of useEffect auto-trigger
-  // because wallet popups (Phantom/Backpack) require a user gesture or browser
-  // security blocks the popup silently.
-  const triggerSolanaReceive = useCallback(() => {
+  // ============ Solana receive flow ============
+  // Two-phase pattern to preserve user gesture for wallet popup:
+  //   1. Auto-prepare tx in background (useEffect) — runs async RPC calls
+  //   2. User click → signAndSend() with ZERO async work before popup
+  // Why: Backpack/Phantom block signing popups if user gesture token is lost
+  // through awaits. By pre-building during attestation phase, click→popup is
+  // synchronous from the browser's perspective.
+
+  // Phase 1: Auto-prepare transaction when ready (background)
+  useEffect(() => {
     if (
       state.status !== "awaiting-solana-receive" ||
       !state.solanaMessage ||
       !state.solanaAttestation ||
-      !state.solanaRecipient
+      !state.solanaRecipient ||
+      !solanaConnected
     ) {
       return;
     }
-    if (!solanaConnected) {
-      toast.error("Connect Phantom or Backpack first");
-      return;
-    }
-
-    toast.loading("Awaiting wallet signature", { id: "bridge-progress" });
-
-    solanaReceive({
+    solanaPrepare({
       messageHex: state.solanaMessage,
       attestationHex: state.solanaAttestation,
       recipient: state.solanaRecipient,
-    })
-      .then((sig) => {
-        if (sig) {
-          markSolanaReceiveComplete(sig);
-        }
-      })
-      .catch((err) => {
-        console.error("[Solana receive] failed:", err);
-      });
+    }).catch((err) => {
+      console.error("[Solana prepare] failed:", err);
+    });
   }, [
     state.status,
     state.solanaMessage,
     state.solanaAttestation,
     state.solanaRecipient,
     solanaConnected,
-    solanaReceive,
+    solanaPrepare,
+  ]);
+
+  // Phase 2: Click handler — fires sign popup from genuine user gesture
+  const triggerSolanaReceive = useCallback(() => {
+    if (!solanaConnected) {
+      toast.error("Connect Phantom or Backpack first");
+      return;
+    }
+    if (solanaReceiveStatus === "building") {
+      toast.error("Transaction still preparing — try again in a sec");
+      return;
+    }
+
+    toast.loading("Awaiting wallet signature", { id: "bridge-progress" });
+
+    // CRITICAL: signAndSend has zero async work before sendTransaction()
+    // so the wallet popup opens within the user click event boundary.
+    solanaSignAndSend()
+      .then((sig) => {
+        if (sig) {
+          markSolanaReceiveComplete(sig);
+        }
+      })
+      .catch((err) => {
+        console.error("[Solana sign] failed:", err);
+      });
+  }, [
+    solanaConnected,
+    solanaReceiveStatus,
+    solanaSignAndSend,
     markSolanaReceiveComplete,
   ]);
 
