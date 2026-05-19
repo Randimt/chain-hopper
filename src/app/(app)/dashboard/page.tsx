@@ -47,6 +47,7 @@ function formatRelativeTime(timestamp: number): string {
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [history, setHistory] = useState<BridgeRecord[]>([]);
+  const [showZero, setShowZero] = useState(false);
 
   // Refresh on mount + listen for updates
   useEffect(() => {
@@ -94,6 +95,9 @@ export default function DashboardPage() {
   }, [balanceData, chainIds]);
 
   const totalUsdc = balances.reduce((sum, b) => sum + b.amount, 0);
+  const nonZeroBalances = balances.filter((b) => b.amount > 0);
+  const zeroCount = balances.length - nonZeroBalances.length;
+  const visibleBalances = showZero ? balances : nonZeroBalances;
   const stats = useMemo(() => {
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
@@ -208,22 +212,36 @@ export default function DashboardPage() {
             <div className="text-center py-8 text-sm text-zinc-500">
               Loading balances...
             </div>
+          ) : visibleBalances.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-zinc-400">No USDC balance yet</p>
+              <a
+                href="https://faucet.circle.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:text-cyan-300 text-xs mt-2 inline-block"
+              >
+                Get from faucet ↗
+              </a>
+            </div>
           ) : (
             <div className="space-y-1">
-              {balances.map((b) => {
+              {visibleBalances.map((b) => {
                 const pct =
                   totalUsdc > 0 ? Math.round((b.amount / totalUsdc) * 100) : 0;
                 return (
                   <div
                     key={b.chainId}
-                    className="flex items-center justify-between py-2.5 border-b border-zinc-800 last:border-0"
+                    className={`flex items-center justify-between py-2.5 border-b border-zinc-800 last:border-0 transition-opacity ${
+                      b.amount === 0 ? "opacity-50" : ""
+                    }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{b.info.logo}</span>
                       <div>
                         <div className="text-sm">{b.info.name}</div>
                         <div className="text-[11px] text-zinc-500">
-                          {pct}% of total
+                          {b.amount > 0 ? `${pct}% of total` : "no balance"}
                         </div>
                       </div>
                     </div>
@@ -234,6 +252,18 @@ export default function DashboardPage() {
                 );
               })}
             </div>
+          )}
+
+          {zeroCount > 0 && balances.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowZero((v) => !v)}
+              className="w-full mt-3 pt-3 border-t border-zinc-800 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              {showZero
+                ? "Hide zero balances"
+                : `+ ${zeroCount} chain${zeroCount === 1 ? "" : "s"} with $0.00`}
+            </button>
           )}
         </div>
 
