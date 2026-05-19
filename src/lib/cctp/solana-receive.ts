@@ -212,14 +212,31 @@ function encodeReceiveMessageData(
 }
 
 /**
- * Build a complete Solana transaction to receive a CCTP V2 message and mint USDC.
+ * Result from building Solana receive transactions.
+ *
+ * If recipient ATA doesn't exist yet, we split into 2 transactions because
+ * a combined tx exceeds Solana's 1232-byte limit. User signs sequentially.
+ */
+export interface ReceiveTransactions {
+  /** Optional ATA creation tx (only if recipient ATA doesn't exist yet). */
+  setupTx: Transaction | null;
+  /** Main receiveMessage tx (always required). */
+  receiveTx: Transaction;
+}
+
+/**
+ * Build Solana transactions to receive a CCTP V2 message and mint USDC.
+ *
+ * Splits ATA creation into a separate transaction when needed to stay under
+ * Solana's 1232-byte transaction size limit. User signs once if ATA exists,
+ * twice if ATA needs to be created.
  *
  * @param connection Solana RPC connection (devnet or mainnet)
  * @param payer the wallet that signs and pays for the transaction
  * @param recipient the wallet that will receive USDC (used to derive ATA)
  * @param messageHex CCTP message bytes (hex with or without 0x prefix)
  * @param attestationHex Circle's attestation bytes (hex with or without 0x prefix)
- * @returns unsigned Transaction ready to be signed by the wallet
+ * @returns setup tx (optional) + receive tx, both unsigned, ready to be signed
  */
 export async function buildReceiveMessageTransaction(params: {
   connection: Connection;
@@ -227,7 +244,7 @@ export async function buildReceiveMessageTransaction(params: {
   recipient: PublicKey;
   messageHex: string;
   attestationHex: string;
-}): Promise<Transaction> {
+}): Promise<ReceiveTransactions> {
   const { connection, payer, recipient, messageHex, attestationHex } = params;
 
   const messageTransmitterId = new PublicKey(SOLANA_CCTP_PROGRAMS.messageTransmitter);
@@ -241,9 +258,8 @@ export async function buildReceiveMessageTransaction(params: {
   // Recipient USDC ATA — must exist before receiveMessage is called
   const recipientAta = getAssociatedTokenAddressSync(usdcMint, recipient, true);
 
-  // Check if recipient ATA exists on-chain. If yes, skip creation ix to stay
-  // under Solana's 1232-byte tx size limit. ATA creation adds ~170 bytes
-  // (overlapping accounts plus ~12 bytes instruction data).
+  // Check if recipient ATA exists on-chain. If not, build a separate setup tx
+  // for ATA creation, since combining with receiveMessage exceeds 1232 bytes.
   const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
   const recipientAtaExists = recipientAtaInfo !== null;
 
@@ -255,15 +271,23 @@ export async function buildReceiveMessageTransaction(params: {
     true
   );
 
-  // Idempotent ATA creation — only emit if account doesn't exist yet
-  const ataIx = recipientAtaExists
-    ? null
-    : createAssociatedTokenAccountIdempotentInstruction(
-        payer,
-        recipientAta,
-        recipient,
-        usdcMint
-      );
+  // Get latest blockhash once for both transactions
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+
+  // Build setup tx (ATA creation) only if needed
+  let setupTx: Transaction | null = null;
+  if (!recipientAtaExists) {
+    const ataIx = createAssociatedTokenAccountIdempotentInstruction(
+      payer,
+      recipientAta,
+      recipient,
+      usdcMint
+    );
+    setupTx = new Transaction();
+    setupTx.add(ataIx);
+    setupTx.recentBlockhash = blockhash;
+    setupTx.feePayer = payer;
+  }
 
   // Bump compute unit limit (default 200k is not enough for receiveMessage + CPI)
   const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
@@ -306,18 +330,13 @@ export async function buildReceiveMessageTransaction(params: {
     data,
   });
 
-  const tx = new Transaction();
-  tx.add(computeBudgetIx);
-  if (ataIx) {
-    tx.add(ataIx);
-  }
-  tx.add(receiveMessageIx);
+  const receiveTx = new Transaction();
+  receiveTx.add(computeBudgetIx);
+  receiveTx.add(receiveMessageIx);
+  receiveTx.recentBlockhash = blockhash;
+  receiveTx.feePayer = payer;
 
-  const { blockhash } = await connection.getLatestBlockhash("confirmed");
-  tx.recentBlockhash = blockhash;
-  tx.feePayer = payer;
-
-  return tx;
+  return { setupTx, receiveTx };
 }
 
 /**

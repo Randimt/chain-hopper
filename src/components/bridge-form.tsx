@@ -117,6 +117,7 @@ export function BridgeForm() {
     status: solanaReceiveStatus,
     txSignature: solanaReceiveTxSig,
     error: solanaReceiveError,
+    needsAtaCreation: solanaNeedsAta,
   } = useSolanaReceive();
   const { publicKey: solanaPublicKey, connected: solanaConnected } = useWallet();
   const recordIdRef = useRef<string | null>(null);
@@ -672,7 +673,7 @@ export function BridgeForm() {
   const acrossProcessing = ["approving", "depositing", "filling"].includes(
     acrossState.status,
   );
-  const solanaProcessing = ["building", "awaiting-signature", "confirming"].includes(
+  const solanaProcessing = ["building", "awaiting-signature", "creating-ata", "confirming-ata", "confirming"].includes(
     solanaReceiveStatus,
   );
   const isProcessing = cctpProcessing || relayProcessing || acrossProcessing || solanaProcessing;
@@ -1106,11 +1107,19 @@ export function BridgeForm() {
                     ? "Connect Phantom or Backpack"
                     : solanaReceiveStatus === "building"
                       ? "Building transaction..."
-                      : solanaReceiveStatus === "awaiting-signature"
-                        ? "Awaiting wallet signature..."
-                        : solanaReceiveStatus === "confirming"
-                          ? "Confirming on Solana..."
-                          : "Sign on Solana to mint USDC"}
+                      : solanaReceiveStatus === "creating-ata"
+                        ? "Sign ATA creation (1/2)..."
+                        : solanaReceiveStatus === "confirming-ata"
+                          ? "Confirming ATA creation..."
+                          : solanaReceiveStatus === "awaiting-signature"
+                            ? solanaNeedsAta
+                              ? "Sign mint transaction (2/2)..."
+                              : "Awaiting wallet signature..."
+                            : solanaReceiveStatus === "confirming"
+                              ? "Confirming on Solana..."
+                              : solanaNeedsAta
+                                ? "Sign on Solana to mint USDC (2 signatures)"
+                                : "Sign on Solana to mint USDC"}
                 </button>
               </>
             ) : (
