@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { erc20Abi, formatUnits } from "viem";
@@ -228,12 +228,13 @@ export function BridgeForm() {
     }
   }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount, solanaPublicKey]);
 
-  // ============ Solana receive flow trigger ============
+  // ============ Solana receive flow trigger (manual click) ============
   // When CCTP burn+attestation finishes for a Solana destination, useBridge
   // sets status to "awaiting-solana-receive" with message + attestation.
-  // This effect hands off to Phantom for the Solana-side mint.
-  const solanaReceiveTriggeredRef = useRef<string | null>(null);
-  useEffect(() => {
+  // We expose this as a button click handler instead of useEffect auto-trigger
+  // because wallet popups (Phantom/Backpack) require a user gesture or browser
+  // security blocks the popup silently.
+  const triggerSolanaReceive = useCallback(() => {
     if (
       state.status !== "awaiting-solana-receive" ||
       !state.solanaMessage ||
@@ -242,12 +243,12 @@ export function BridgeForm() {
     ) {
       return;
     }
-    // Idempotent: only trigger once per burn tx
-    const triggerKey = state.burnTxHash || "no-burn";
-    if (solanaReceiveTriggeredRef.current === triggerKey) return;
-    solanaReceiveTriggeredRef.current = triggerKey;
+    if (!solanaConnected) {
+      toast.error("Connect Phantom or Backpack first");
+      return;
+    }
 
-    toast.loading("Awaiting Phantom signature", { id: "bridge-progress" });
+    toast.loading("Awaiting wallet signature", { id: "bridge-progress" });
 
     solanaReceive({
       messageHex: state.solanaMessage,
@@ -267,18 +268,10 @@ export function BridgeForm() {
     state.solanaMessage,
     state.solanaAttestation,
     state.solanaRecipient,
-    state.burnTxHash,
+    solanaConnected,
     solanaReceive,
     markSolanaReceiveComplete,
   ]);
-
-  // Reset Solana trigger ref when bridge restarts
-  useEffect(() => {
-    if (state.status === "idle") {
-      solanaReceiveTriggeredRef.current = null;
-      solanaReceiveReset();
-    }
-  }, [state.status, solanaReceiveReset]);
 
   // Clear pending after CCTP complete
   useEffect(() => {
@@ -287,6 +280,13 @@ export function BridgeForm() {
       setPendingBridge(null);
     }
   }, [state.status, address]);
+
+  // Reset Solana receive sub-state when main bridge resets to idle
+  useEffect(() => {
+    if (state.status === "idle") {
+      solanaReceiveReset();
+    }
+  }, [state.status, solanaReceiveReset]);
 
   // ============ CCTP toast / history tracking ============
   const prevStatusRef = useRef<string>("idle");
@@ -1046,54 +1046,82 @@ export function BridgeForm() {
         {/* Action Buttons */}
         <div className="space-y-2">
           {!isComplete ? (
-            <>
-              {showApproveButton && (
+            state.status === "awaiting-solana-receive" ? (
+              // Solana hand-off: requires user click to trigger wallet popup
+              // (browser security blocks programmatic popups without user gesture)
+              <>
+                <div className="rounded-lg border border-purple-500/30 bg-purple-500/10 p-3 text-xs text-purple-200 space-y-1">
+                  <div className="font-medium">✓ Burn confirmed on source</div>
+                  <div className="text-purple-300/80">
+                    Click below and approve the transaction in your Solana wallet to mint USDC.
+                  </div>
+                </div>
                 <button
-                  onClick={handleApprove}
-                  disabled={!canApprove}
+                  onClick={triggerSolanaReceive}
+                  disabled={!solanaConnected || solanaProcessing}
+                  className="w-full rounded-lg bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+                >
+                  {!solanaConnected
+                    ? "Connect Phantom or Backpack"
+                    : solanaReceiveStatus === "building"
+                      ? "Building transaction..."
+                      : solanaReceiveStatus === "awaiting-signature"
+                        ? "Awaiting wallet signature..."
+                        : solanaReceiveStatus === "confirming"
+                          ? "Confirming on Solana..."
+                          : "Sign on Solana to mint USDC"}
+                </button>
+              </>
+            ) : (
+              <>
+                {showApproveButton && (
+                  <button
+                    onClick={handleApprove}
+                    disabled={!canApprove}
+                    className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
+                  >
+                    {state.status === "approving"
+                      ? "Approving..."
+                      : isApproved
+                        ? `✓ Approved`
+                        : `Approve ${sourceInfo.name} USDC`}
+                  </button>
+                )}
+                <button
+                  onClick={handleBridge}
+                  disabled={!canBridge}
                   className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
                 >
-                  {state.status === "approving"
-                    ? "Approving..."
-                    : isApproved
-                      ? `✓ Approved`
-                      : `Approve ${sourceInfo.name} USDC`}
-                </button>
-              )}
-              <button
-                onClick={handleBridge}
-                disabled={!canBridge}
-                className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
-              >
-                {cctpProcessing
-                  ? state.status === "burning"
-                    ? "Burning..."
-                    : state.status === "attesting"
-                      ? "Waiting for attestation..."
-                      : state.status === "minting"
-                        ? "Minting..."
-                        : "Approving..."
-                  : relayProcessing
-                    ? relayState.status === "approving"
-                      ? "Approving..."
-                      : relayState.status === "depositing"
-                        ? "Depositing..."
-                        : "Filling..."
-                    : acrossProcessing
-                      ? acrossState.status === "approving"
+                  {cctpProcessing
+                    ? state.status === "burning"
+                      ? "Burning..."
+                      : state.status === "attesting"
+                        ? "Waiting for attestation..."
+                        : state.status === "minting"
+                          ? "Minting..."
+                          : "Approving..."
+                    : relayProcessing
+                      ? relayState.status === "approving"
                         ? "Approving..."
-                        : acrossState.status === "depositing"
+                        : relayState.status === "depositing"
                           ? "Depositing..."
                           : "Filling..."
-                      : selectedProvider === "relay"
-                        ? `Bridge via Relay → ${destInfo.name}`
-                        : selectedProvider === "across"
-                          ? `Bridge via Across → ${destInfo.name}`
-                          : selectedProvider === "cctp"
-                            ? `Bridge via CCTP → ${destInfo.name}`
-                            : "Select a route"}
-              </button>
-            </>
+                      : acrossProcessing
+                        ? acrossState.status === "approving"
+                          ? "Approving..."
+                          : acrossState.status === "depositing"
+                            ? "Depositing..."
+                            : "Filling..."
+                        : selectedProvider === "relay"
+                          ? `Bridge via Relay → ${destInfo.name}`
+                          : selectedProvider === "across"
+                            ? `Bridge via Across → ${destInfo.name}`
+                            : selectedProvider === "cctp"
+                              ? `Bridge via CCTP → ${destInfo.name}`
+                              : "Select a route"}
+                </button>
+              </>
+            )
           ) : (
             <button
               onClick={handleBridgeAgain}
