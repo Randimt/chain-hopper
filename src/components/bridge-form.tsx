@@ -156,6 +156,23 @@ export function BridgeForm() {
     setUserPickedProvider(false);
   }, [sourceChain, destChain]);
 
+  // Listen for "set source chain" event from balance list (compact balances click)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ chainId: number }>).detail;
+      if (!detail || typeof detail.chainId !== "number") return;
+      const target = detail.chainId;
+      if (target === sourceChain) return;
+      // If user picks current dest, swap chains instead of duplicating
+      if (target === destChain) {
+        setDestChain(sourceChain);
+      }
+      setSourceChain(target);
+    };
+    window.addEventListener("plix:set-source-chain", handler);
+    return () => window.removeEventListener("plix:set-source-chain", handler);
+  }, [sourceChain, destChain]);
+
   const handleSelectProvider = (provider: QuoteProvider) => {
     setSelectedProvider(provider);
     setUserPickedProvider(true);
