@@ -286,8 +286,25 @@ export function BridgeForm() {
       toast.error("Transaction still preparing — try again in a sec");
       return;
     }
+    // Auto-retry on error: reset hook + re-prepare from cached state.message/attestation
     if (solanaReceiveStatus === "error") {
-      toast.error("Tx prep failed — refresh page and click Resume");
+      console.log("[bridge-form] retry: error state detected, last error:", solanaReceiveError);
+      if (solanaReceiveError) {
+        toast.error(`Previous error: ${solanaReceiveError}. Retrying...`, { duration: 4000 });
+      }
+      if (state.solanaMessage && state.solanaAttestation && solanaPublicKey) {
+        const recipientStr = state.solanaRecipient ?? solanaPublicKey.toBase58();
+        solanaReceiveReset();
+        setTimeout(() => {
+          solanaPrepare({
+            messageHex: state.solanaMessage!,
+            attestationHex: state.solanaAttestation!,
+            recipient: recipientStr,
+          });
+        }, 100);
+      } else {
+        toast.error("Missing bridge data — refresh page and click Resume");
+      }
       return;
     }
     if (solanaReceiveStatus !== "ready") {
@@ -311,7 +328,14 @@ export function BridgeForm() {
   }, [
     solanaConnected,
     solanaReceiveStatus,
+    solanaReceiveError,
     solanaSignAndSend,
+    solanaPrepare,
+    solanaReceiveReset,
+    solanaPublicKey,
+    state.solanaMessage,
+    state.solanaAttestation,
+    state.solanaRecipient,
     markSolanaReceiveComplete,
   ]);
 
@@ -1098,6 +1122,15 @@ export function BridgeForm() {
                     Click below and approve the transaction in your Solana wallet to mint USDC.
                   </div>
                 </div>
+                {solanaReceiveStatus === "error" && solanaReceiveError && (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200 space-y-1">
+                    <div className="font-medium">⚠ Transaction prep failed</div>
+                    <div className="text-red-300/80 break-all">{solanaReceiveError}</div>
+                    <div className="text-red-300/60 text-[10px] pt-1">
+                      Click button to retry. If it keeps failing, check console (F12) for details.
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={triggerSolanaReceive}
                   disabled={!solanaConnected || solanaProcessing}
@@ -1105,21 +1138,23 @@ export function BridgeForm() {
                 >
                   {!solanaConnected
                     ? "Connect Phantom or Backpack"
-                    : solanaReceiveStatus === "building"
-                      ? "Building transaction..."
-                      : solanaReceiveStatus === "creating-ata"
-                        ? "Sign ATA creation (1/2)..."
-                        : solanaReceiveStatus === "confirming-ata"
-                          ? "Confirming ATA creation..."
-                          : solanaReceiveStatus === "awaiting-signature"
-                            ? solanaNeedsAta
-                              ? "Sign mint transaction (2/2)..."
-                              : "Awaiting wallet signature..."
-                            : solanaReceiveStatus === "confirming"
-                              ? "Confirming on Solana..."
-                              : solanaNeedsAta
-                                ? "Sign on Solana to mint USDC (2 signatures)"
-                                : "Sign on Solana to mint USDC"}
+                    : solanaReceiveStatus === "error"
+                      ? "Retry transaction"
+                      : solanaReceiveStatus === "building"
+                        ? "Building transaction..."
+                        : solanaReceiveStatus === "creating-ata"
+                          ? "Sign ATA creation (1/2)..."
+                          : solanaReceiveStatus === "confirming-ata"
+                            ? "Confirming ATA creation..."
+                            : solanaReceiveStatus === "awaiting-signature"
+                              ? solanaNeedsAta
+                                ? "Sign mint transaction (2/2)..."
+                                : "Awaiting wallet signature..."
+                              : solanaReceiveStatus === "confirming"
+                                ? "Confirming on Solana..."
+                                : solanaNeedsAta
+                                  ? "Sign on Solana to mint USDC (2 signatures)"
+                                  : "Sign on Solana to mint USDC"}
                 </button>
               </>
             ) : (
