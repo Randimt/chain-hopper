@@ -28,6 +28,7 @@ interface PendingBridge {
   amount: string;
   burnTxHash: `0x${string}`;
   timestamp: number;
+  solanaRecipient?: string;
 }
 
 function loadPendingBridge(address?: string): PendingBridge | null {
@@ -218,11 +219,14 @@ export function BridgeForm() {
         amount,
         burnTxHash: state.burnTxHash,
         timestamp: Date.now(),
+        // For Solana destinations, capture recipient at burn time so resume
+        // can rebuild the Phantom signing flow without re-prompting.
+        solanaRecipient: isSolanaChain(destChain) ? solanaPublicKey?.toBase58() : undefined,
       };
       savePendingBridge(address, data);
       setPendingBridge(data);
     }
-  }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount]);
+  }, [state.burnTxHash, state.status, address, pendingBridge, sourceChain, destChain, amount, solanaPublicKey]);
 
   // ============ Solana receive flow trigger ============
   // When CCTP burn+attestation finishes for a Solana destination, useBridge
@@ -693,6 +697,26 @@ export function BridgeForm() {
 
   const handleResume = () => {
     if (!pendingBridge) return;
+
+    const destIsSolana = isSolanaChain(pendingBridge.destChain);
+
+    // Solana resume requires Phantom connected (need to sign receiveMessage)
+    if (destIsSolana) {
+      if (!solanaConnected || !solanaPublicKey) {
+        toast.error("Connect Phantom wallet first to resume Solana bridge");
+        return;
+      }
+      // If user reconnected with a different Phantom address, warn
+      const expected = pendingBridge.solanaRecipient;
+      const current = solanaPublicKey.toBase58();
+      if (expected && expected !== current) {
+        toast.error(
+          `Pending bridge expects Phantom ${expected.slice(0, 6)}... — connected to ${current.slice(0, 6)}...`
+        );
+        return;
+      }
+    }
+
     recordMetaRef.current = {
       sourceChain: pendingBridge.sourceChain,
       destChain: pendingBridge.destChain,
@@ -703,6 +727,7 @@ export function BridgeForm() {
       sourceChain: pendingBridge.sourceChain,
       destChain: pendingBridge.destChain,
       burnTxHash: pendingBridge.burnTxHash,
+      solanaRecipient: pendingBridge.solanaRecipient || (destIsSolana ? solanaPublicKey?.toBase58() : undefined),
     });
   };
 

@@ -59,6 +59,7 @@ interface ResumeBridgeArgs {
   sourceChain: number;
   destChain: number;
   burnTxHash: `0x${string}`;
+  solanaRecipient?: string;
 }
 
 const initialState: BridgeState = { status: "idle" };
@@ -283,9 +284,19 @@ export function useBridge() {
 
   // Resume an interrupted bridge: skip burn, jump to attestation poll + mint
   const resume = useCallback(
-    async ({ sourceChain, destChain, burnTxHash }: ResumeBridgeArgs) => {
+    async ({ sourceChain, destChain, burnTxHash, solanaRecipient }: ResumeBridgeArgs) => {
       if (!address || !walletClient || !publicClient) {
         setState({ status: "error", errorMessage: "Wallet not connected" });
+        return;
+      }
+
+      const destIsSolana = isSolanaChain(destChain);
+
+      if (destIsSolana && !solanaRecipient) {
+        setState({
+          status: "error",
+          errorMessage: "Connect Phantom wallet to resume Solana bridge",
+        });
         return;
       }
 
@@ -305,7 +316,23 @@ export function useBridge() {
           (status) => setState((s) => ({ ...s, attestationStatus: status }))
         );
 
-        // Mint on destination
+        // ============ Branch by destination type ============
+        if (destIsSolana) {
+          // Solana flow: hand off message + attestation to Phantom-signing hook.
+          // bridge-form.tsx watches "awaiting-solana-receive" status and triggers
+          // useSolanaReceive. Skip wagmi switchChain (synthetic Solana chainId
+          // not in wagmi config = "Chain not configured" error).
+          setState((s) => ({
+            ...s,
+            status: "awaiting-solana-receive",
+            solanaMessage: attestation.message,
+            solanaAttestation: attestation.attestation,
+            solanaRecipient: solanaRecipient!,
+          }));
+          return;
+        }
+
+        // EVM flow: switch chain + receiveMessage on destination
         setState((s) => ({ ...s, status: "minting" }));
 
         if (walletClient.chain?.id !== destChain) {
@@ -330,7 +357,7 @@ export function useBridge() {
             timeout: 180_000,
             pollingInterval: 2_000,
           });
-        } catch (waitErr) {
+        } catch {
           // Timeout is OK — tx is on-chain, just slow indexer.
           console.warn("[Bridge] Mint receipt wait timed out, but tx submitted:", mintTxHash);
         }
