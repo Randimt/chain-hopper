@@ -7,13 +7,8 @@ import {
   usePublicClient,
   useWalletClient,
 } from "wagmi";
-import {
-  sepolia,
-  baseSepolia,
-  arbitrumSepolia,
-} from "wagmi/chains";
-import { arcTestnet, USDC_ADDRESSES } from "@/lib/wagmi";
-import { decodeEventLog, erc20Abi, maxUint256, type Chain } from "viem";
+import { USDC_ADDRESSES, CHAIN_MAP } from "@/lib/wagmi";
+import { decodeEventLog, erc20Abi, maxUint256 } from "viem";
 import { Quote } from "@/lib/quotes/types";
 import {
   extractAcrossDeposit,
@@ -21,13 +16,6 @@ import {
   SPOKE_POOL_ABI,
 } from "@/lib/quotes/across";
 import { friendlyError } from "@/lib/error-messages";
-
-const CHAIN_MAP: Record<number, Chain> = {
-  [sepolia.id]: sepolia,
-  [baseSepolia.id]: baseSepolia,
-  [arbitrumSepolia.id]: arbitrumSepolia,
-  [arcTestnet.id]: arcTestnet,
-};
 
 export type AcrossBridgeStatus =
   | "idle"

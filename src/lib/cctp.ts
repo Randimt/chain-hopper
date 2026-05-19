@@ -2,8 +2,28 @@ import {
   sepolia,
   baseSepolia,
   arbitrumSepolia,
+  avalancheFuji,
+  optimismSepolia,
+  polygonAmoy,
+  unichainSepolia,
+  lineaSepolia,
+  codexTestnet,
+  sonicBlazeTestnet,
+  worldchainSepolia,
+  monadTestnet,
+  seiTestnet,
+  xdcTestnet,
+  hyperliquidEvmTestnet,
+  inkSepolia,
+  plumeSepolia,
+  injectiveTestnet,
 } from "wagmi/chains";
-import { arcTestnet } from "./wagmi";
+import {
+  arcTestnet,
+  pharosTestnet,
+  morphHoodiTestnet,
+  edgeTestnet,
+} from "./wagmi";
 
 // CCTP V2 testnet contracts (uniform across all supported testnets)
 // Source: https://developers.circle.com/cctp/v2-evm-smart-contracts
@@ -13,15 +33,56 @@ export const CCTP_V2_CONTRACTS = {
   tokenMinter: "0xb43db544E2c27092c107639Ad201b3dEfAbcF192" as `0x${string}`,
 } as const;
 
-// CCTP Domain IDs (used in cross-chain messaging encoding)
+// CCTP V2 Domain IDs (used in cross-chain messaging encoding)
 // Source: https://developers.circle.com/cctp/concepts/supported-chains-and-domains
-// Active chains: Sepolia, Base Sepolia, Arbitrum Sepolia, Arc Testnet
+// All 22 EVM testnets supported as of May 2026.
 export const CCTP_DOMAINS: Record<number, number> = {
   [sepolia.id]: 0,
+  [avalancheFuji.id]: 1,
+  [optimismSepolia.id]: 2,
   [arbitrumSepolia.id]: 3,
   [baseSepolia.id]: 6,
+  [polygonAmoy.id]: 7,
+  [unichainSepolia.id]: 10,
+  [lineaSepolia.id]: 11,
+  [codexTestnet.id]: 12,
+  [sonicBlazeTestnet.id]: 13,
+  [worldchainSepolia.id]: 14,
+  [monadTestnet.id]: 15,
+  [seiTestnet.id]: 16,
+  [xdcTestnet.id]: 18,
+  [hyperliquidEvmTestnet.id]: 19,
+  [inkSepolia.id]: 21,
+  [plumeSepolia.id]: 22,
   [arcTestnet.id]: 26,
+  [edgeTestnet.id]: 28,
+  [injectiveTestnet.id]: 29,
+  [morphHoodiTestnet.id]: 30,
+  [pharosTestnet.id]: 31,
 };
+
+// Chains that support CCTP V2 Fast Transfer (~8-30s)
+// Other chains use Standard Transfer only (their native finality is faster
+// than Fast attestation, so Circle disables Fast as a source).
+// Source: https://developers.circle.com/cctp/required-block-confirmations
+export const FAST_TRANSFER_CHAINS = new Set<number>([
+  sepolia.id,
+  baseSepolia.id,
+  arbitrumSepolia.id,
+  optimismSepolia.id,
+  unichainSepolia.id,
+  lineaSepolia.id,
+  codexTestnet.id,
+  worldchainSepolia.id,
+  inkSepolia.id,
+  plumeSepolia.id,
+  edgeTestnet.id,
+  morphHoodiTestnet.id,
+]);
+
+export function supportsFastTransfer(chainId: number): boolean {
+  return FAST_TRANSFER_CHAINS.has(chainId);
+}
 
 export function chainIdToDomain(chainId: number): number {
   const domain = CCTP_DOMAINS[chainId];

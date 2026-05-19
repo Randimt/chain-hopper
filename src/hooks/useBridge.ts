@@ -3,14 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useAccount, useSwitchChain, usePublicClient, useWalletClient } from "wagmi";
 import { parseUnits, erc20Abi, maxUint256 } from "viem";
-import {
-  sepolia,
-  baseSepolia,
-  arbitrumSepolia,
-} from "wagmi/chains";
-import { arcTestnet } from "@/lib/wagmi";
-import type { Chain } from "viem";
-import { USDC_ADDRESSES } from "@/lib/wagmi";
+import { USDC_ADDRESSES, CHAIN_MAP } from "@/lib/wagmi";
 import {
   CCTP_V2_CONTRACTS,
   TOKEN_MESSENGER_V2_ABI,
@@ -22,15 +15,6 @@ import {
 } from "@/lib/cctp";
 import { pollAttestation } from "@/lib/circle-api";
 import { friendlyError } from "@/lib/error-messages";
-
-// Resolve a Chain object by chain id — used to pass explicit chain to writeContract
-// (walletClient.chain is stale right after switchChainAsync, so we can't trust it)
-const CHAIN_MAP: Record<number, Chain> = {
-  [sepolia.id]: sepolia,
-  [baseSepolia.id]: baseSepolia,
-  [arbitrumSepolia.id]: arbitrumSepolia,
-  [arcTestnet.id]: arcTestnet,
-};
 
 export type BridgeStatus =
   | "idle"

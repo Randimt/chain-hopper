@@ -1,32 +1,15 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import {
-  useAccount,
-  useSwitchChain,
-  usePublicClient,
-  useWalletClient,
-} from "wagmi";
-import {
-  sepolia,
-  baseSepolia,
-  arbitrumSepolia,
-} from "wagmi/chains";
-import { arcTestnet } from "@/lib/wagmi";
-import type { Chain } from "viem";
+import { useAccount, useSwitchChain, usePublicClient, useWalletClient } from "wagmi";
+import { erc20Abi, maxUint256, parseUnits } from "viem";
+import { CHAIN_MAP } from "@/lib/wagmi";
 import {
   Quote,
   formatUSDC,
 } from "@/lib/quotes/types";
 import { extractRelayTxs, pollRelayStatus } from "@/lib/quotes/relay";
 import { friendlyError } from "@/lib/error-messages";
-
-const CHAIN_MAP: Record<number, Chain> = {
-  [sepolia.id]: sepolia,
-  [baseSepolia.id]: baseSepolia,
-  [arbitrumSepolia.id]: arbitrumSepolia,
-  [arcTestnet.id]: arcTestnet,
-};
 
 export type RelayBridgeStatus =
   | "idle"
