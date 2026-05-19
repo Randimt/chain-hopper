@@ -1,6 +1,11 @@
 "use client";
 
-import { CHAIN_INFO, USDC_ADDRESSES, type ChainType } from "@/lib/wagmi";
+import {
+  CHAIN_INFO,
+  USDC_ADDRESSES,
+  SOLANA_DEVNET_CHAIN_ID,
+  type ChainType,
+} from "@/lib/wagmi";
 
 interface ChainSelectorProps {
   value: number;
@@ -14,6 +19,7 @@ const TYPE_BADGE_STYLE: Record<ChainType, string> = {
   L2: "bg-violet-500/10 text-violet-400 border-violet-500/30",
   EVM: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
   "Cosmos+EVM": "bg-amber-500/10 text-amber-400 border-amber-500/30",
+  Solana: "bg-purple-500/10 text-purple-400 border-purple-500/30",
 };
 
 export function ChainSelector({
@@ -22,13 +28,15 @@ export function ChainSelector({
   exclude,
   label,
 }: ChainSelectorProps) {
-  // Bridge form: all CCTP-supported chains (including Arc).
-  const availableChainIds = Object.keys(USDC_ADDRESSES)
+  // Active EVM chains (CCTP-supported)
+  const evmChainIds = Object.keys(USDC_ADDRESSES)
     .map(Number)
-    .filter((id) => {
-      if (exclude && id === exclude) return false;
-      return true;
-    });
+    .filter((id) => !exclude || id !== exclude);
+
+  // Coming-soon chains (Solana etc) — visible but disabled
+  const comingSoonIds = Object.entries(CHAIN_INFO)
+    .filter(([, info]) => info.comingSoon)
+    .map(([id]) => Number(id));
 
   const selectedInfo = CHAIN_INFO[value];
 
@@ -41,10 +49,14 @@ export function ChainSelector({
       )}
       <select
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const next = Number(e.target.value);
+          if (CHAIN_INFO[next]?.comingSoon) return; // safety guard
+          onChange(next);
+        }}
         className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-200 focus:border-blue-500 focus:outline-none cursor-pointer"
       >
-        {availableChainIds.map((chainId) => {
+        {evmChainIds.map((chainId) => {
           const info = CHAIN_INFO[chainId];
           return (
             <option key={chainId} value={chainId}>
@@ -52,6 +64,18 @@ export function ChainSelector({
             </option>
           );
         })}
+        {comingSoonIds.length > 0 && (
+          <optgroup label="── Coming Soon ──">
+            {comingSoonIds.map((chainId) => {
+              const info = CHAIN_INFO[chainId];
+              return (
+                <option key={chainId} value={chainId} disabled>
+                  {info.logo} {info.name} · {info.type} — Coming Soon
+                </option>
+              );
+            })}
+          </optgroup>
+        )}
       </select>
 
       {selectedInfo && (
@@ -64,6 +88,11 @@ export function ChainSelector({
           >
             {selectedInfo.type}
           </span>
+          {selectedInfo.comingSoon && (
+            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-medium bg-purple-500/10 text-purple-400 border-purple-500/30">
+              Coming Soon
+            </span>
+          )}
           {selectedInfo.typeNote && (
             <span className="text-[11px] text-amber-400/80 leading-tight">
               ⚠ {selectedInfo.typeNote}
@@ -74,3 +103,5 @@ export function ChainSelector({
     </div>
   );
 }
+
+export { SOLANA_DEVNET_CHAIN_ID };

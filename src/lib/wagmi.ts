@@ -182,7 +182,18 @@ export const CHAIN_MAP: Record<number, Chain> = {
   [edgeTestnet.id]: edgeTestnet,
 };
 
-export type ChainType = "L1" | "L2" | "EVM" | "Cosmos+EVM";
+export type ChainType = "L1" | "L2" | "EVM" | "Cosmos+EVM" | "Solana";
+
+/**
+ * Synthetic chain ID for Solana Devnet (Solana doesn't use EVM-style chainIds).
+ * Used for UI display only — not registered in wagmi/USDC_ADDRESSES because
+ * Solana requires non-EVM RPC + wallet adapter (Phantom). Bridge UI shows it
+ * as "Coming Soon" until full Solana CCTP V2 integration is implemented.
+ *
+ * CCTP V2 Solana domain: 5 (mainnet & devnet share same domain).
+ * USDC Devnet mint: 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+ */
+export const SOLANA_DEVNET_CHAIN_ID = 999999001;
 
 export const CHAIN_INFO: Record<
   number,
@@ -193,6 +204,7 @@ export const CHAIN_INFO: Record<
     explorer: string;
     type: ChainType;
     typeNote?: string;
+    comingSoon?: boolean;
   }
 > = {
   // Tier 1
@@ -353,5 +365,15 @@ export const CHAIN_INFO: Record<
     color: "#1A1A1A",
     explorer: "https://edge-testnet.explorer.alchemy.com",
     type: "L2",
+  },
+  // Coming Soon — Non-EVM
+  [SOLANA_DEVNET_CHAIN_ID]: {
+    name: "Solana Devnet",
+    logo: "🟢",
+    color: "#9945FF",
+    explorer: "https://explorer.solana.com/?cluster=devnet",
+    type: "Solana",
+    typeNote: "Non-EVM chain. Requires Phantom wallet — bridge integration coming Phase 4.",
+    comingSoon: true,
   },
 };

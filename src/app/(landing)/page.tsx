@@ -124,7 +124,7 @@ function Hero3D() {
       <div className="relative z-10 text-center max-w-4xl px-6">
         <div className="ch-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-xs text-green-400 mb-8 backdrop-blur">
           <span className="w-[7px] h-[7px] rounded-full bg-green-500 ch-dot-pulse"></span>
-          Phase 1 live · 7 testnets · Powered by CCTP V2
+          Phase 1 live · 22 testnets · Powered by CCTP V2
         </div>
 
         <h1 className="ch-fade-up-delay-1 text-[clamp(48px,9vw,108px)] font-bold leading-[0.95] tracking-tight mb-6">
@@ -287,7 +287,7 @@ function RoadmapSection() {
         Building the unified cross-chain experience in three phases. Each phase ships a working product, not a promise.
       </p>
 
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid lg:grid-cols-2 gap-6">
         <PhaseCard
           tone="live"
           status="LIVE NOW"
@@ -296,7 +296,7 @@ function RoadmapSection() {
           eta="Q2 2026 · shipped"
           features={[
             "CCTP V2 Fast Transfer (~30 seconds)",
-            "7 EVM testnets supported",
+            "22 EVM testnets supported",
             "Resume bridges across devices",
             "Tx history with explorer links",
             "Toast feedback + UI polish",
@@ -328,6 +328,20 @@ function RoadmapSection() {
             "\"100 USDT POL + 50 ETH BASE\" — one click",
             "Recipe sharing & templates",
             "Auto-rebalance portfolios",
+          ]}
+        />
+        <PhaseCard
+          tone="future"
+          status="⏳ COMING SOON"
+          num="04"
+          title="Solana integration"
+          eta="2027 · planned"
+          features={[
+            "Solana Devnet via CCTP V2 Domain 5",
+            "Phantom wallet adapter (dual-wallet UX)",
+            "Bridge USDC EVM ↔ Solana",
+            "Anchor SDK + TokenMessengerMinter program",
+            "Non-EVM expansion foundation",
           ]}
         />
       </div>
