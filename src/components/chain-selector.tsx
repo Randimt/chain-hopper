@@ -1,6 +1,6 @@
 "use client";
 
-import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
+import { CHAIN_INFO, USDC_ADDRESSES, type ChainType } from "@/lib/wagmi";
 
 interface ChainSelectorProps {
   value: number;
@@ -8,6 +8,13 @@ interface ChainSelectorProps {
   exclude?: number;
   label?: string;
 }
+
+const TYPE_BADGE_STYLE: Record<ChainType, string> = {
+  L1: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+  L2: "bg-violet-500/10 text-violet-400 border-violet-500/30",
+  EVM: "bg-zinc-500/10 text-zinc-400 border-zinc-500/30",
+  "Cosmos+EVM": "bg-amber-500/10 text-amber-400 border-amber-500/30",
+};
 
 export function ChainSelector({
   value,
@@ -22,6 +29,8 @@ export function ChainSelector({
       if (exclude && id === exclude) return false;
       return true;
     });
+
+  const selectedInfo = CHAIN_INFO[value];
 
   return (
     <div className="space-y-2">
@@ -39,11 +48,29 @@ export function ChainSelector({
           const info = CHAIN_INFO[chainId];
           return (
             <option key={chainId} value={chainId}>
-              {info.logo} {info.name}
+              {info.logo} {info.name} · {info.type}
             </option>
           );
         })}
       </select>
+
+      {selectedInfo && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border font-medium ${
+              TYPE_BADGE_STYLE[selectedInfo.type]
+            }`}
+            title={selectedInfo.typeNote}
+          >
+            {selectedInfo.type}
+          </span>
+          {selectedInfo.typeNote && (
+            <span className="text-[11px] text-amber-400/80 leading-tight">
+              ⚠ {selectedInfo.typeNote}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

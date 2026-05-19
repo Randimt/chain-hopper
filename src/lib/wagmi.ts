@@ -182,9 +182,18 @@ export const CHAIN_MAP: Record<number, Chain> = {
   [edgeTestnet.id]: edgeTestnet,
 };
 
+export type ChainType = "L1" | "L2" | "EVM" | "Cosmos+EVM";
+
 export const CHAIN_INFO: Record<
   number,
-  { name: string; logo: string; color: string; explorer: string }
+  {
+    name: string;
+    logo: string;
+    color: string;
+    explorer: string;
+    type: ChainType;
+    typeNote?: string;
+  }
 > = {
   // Tier 1
   [sepolia.id]: {
@@ -192,36 +201,42 @@ export const CHAIN_INFO: Record<
     logo: "🔷",
     color: "#627EEA",
     explorer: "https://sepolia.etherscan.io",
+    type: "L1",
   },
   [baseSepolia.id]: {
     name: "Base Sepolia",
     logo: "🔵",
     color: "#0052FF",
     explorer: "https://sepolia.basescan.org",
+    type: "L2",
   },
   [arbitrumSepolia.id]: {
     name: "Arbitrum Sepolia",
     logo: "🟣",
     color: "#28A0F0",
     explorer: "https://sepolia.arbiscan.io",
+    type: "L2",
   },
   [optimismSepolia.id]: {
     name: "OP Sepolia",
     logo: "🔴",
     color: "#FF0420",
     explorer: "https://sepolia-optimism.etherscan.io",
+    type: "L2",
   },
   [polygonAmoy.id]: {
     name: "Polygon Amoy",
     logo: "🟪",
     color: "#8247E5",
     explorer: "https://amoy.polygonscan.com",
+    type: "L2",
   },
   [avalancheFuji.id]: {
     name: "Avalanche Fuji",
     logo: "🔺",
     color: "#E84142",
     explorer: "https://testnet.snowtrace.io",
+    type: "L1",
   },
   // Tier 2
   [unichainSepolia.id]: {
@@ -229,48 +244,57 @@ export const CHAIN_INFO: Record<
     logo: "🦄",
     color: "#FF007A",
     explorer: "https://unichain-sepolia.blockscout.com",
+    type: "L2",
   },
   [lineaSepolia.id]: {
     name: "Linea Sepolia",
     logo: "⚫",
     color: "#000000",
     explorer: "https://sepolia.lineascan.build",
+    type: "L2",
   },
   [monadTestnet.id]: {
     name: "Monad Testnet",
     logo: "🟢",
     color: "#6E54FF",
     explorer: "https://testnet.monadexplorer.com",
+    type: "L1",
   },
   [plumeSepolia.id]: {
     name: "Plume Testnet",
     logo: "🪶",
     color: "#FF6B35",
     explorer: "https://testnet-explorer.plume.org",
+    type: "L2",
   },
   [inkSepolia.id]: {
     name: "Ink Sepolia",
     logo: "🟣",
     color: "#7132F5",
     explorer: "https://explorer-sepolia.inkonchain.com",
+    type: "L2",
   },
   [worldchainSepolia.id]: {
     name: "World Chain Sepolia",
     logo: "🌍",
     color: "#000000",
     explorer: "https://sepolia.worldscan.org",
+    type: "L2",
   },
   [sonicBlazeTestnet.id]: {
     name: "Sonic Blaze",
     logo: "💨",
     color: "#FE9A2E",
     explorer: "https://testnet.sonicscan.org",
+    type: "L1",
   },
   [seiTestnet.id]: {
     name: "Sei Testnet",
     logo: "🌊",
     color: "#9B1B1B",
     explorer: "https://testnet.seiscan.io",
+    type: "Cosmos+EVM",
+    typeNote: "Bridge uses Sei EVM layer. Connect via MetaMask.",
   },
   // Tier 3
   [pharosTestnet.id]: {
@@ -278,47 +302,56 @@ export const CHAIN_INFO: Record<
     logo: "💎",
     color: "#1FE9DC",
     explorer: "https://testnet.pharosscan.xyz",
+    type: "L1",
   },
   [arcTestnet.id]: {
     name: "Arc Testnet",
     logo: "⭕",
     color: "#00D4FF",
     explorer: "https://testnet.arcscan.app",
+    type: "L1",
   },
   [codexTestnet.id]: {
     name: "Codex Testnet",
     logo: "📜",
     color: "#5C6BC0",
     explorer: "https://explorer.codex-stg.xyz",
+    type: "L2",
   },
   [hyperliquidEvmTestnet.id]: {
     name: "HyperEVM Testnet",
     logo: "💜",
     color: "#7C3AED",
     explorer: "https://testnet.hyperevmscan.io",
+    type: "EVM",
   },
   [injectiveTestnet.id]: {
     name: "Injective Testnet",
     logo: "🟠",
     color: "#00E5FF",
     explorer: "https://testnet.blockscout.injective.network",
+    type: "Cosmos+EVM",
+    typeNote: "Bridge uses Injective EVM (inEVM) layer. Connect via MetaMask.",
   },
   [xdcTestnet.id]: {
     name: "XDC Apothem",
     logo: "🟦",
     color: "#2A53A5",
     explorer: "https://testnet.xdcscan.com",
+    type: "EVM",
   },
   [morphHoodiTestnet.id]: {
     name: "Morph Hoodi",
     logo: "🟩",
     color: "#00C896",
     explorer: "https://explorer-hoodi.morph.network",
+    type: "L2",
   },
   [edgeTestnet.id]: {
     name: "EDGE Testnet",
     logo: "⬛",
     color: "#1A1A1A",
     explorer: "https://edge-testnet.explorer.alchemy.com",
+    type: "L2",
   },
 };
