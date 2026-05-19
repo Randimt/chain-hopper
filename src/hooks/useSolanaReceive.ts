@@ -187,8 +187,29 @@ export function useSolanaReceive(): UseSolanaReceiveResult {
         `[useSolanaReceive] sending receiveMessage tx${setupTx ? " (2/2)" : ""}...`
       );
 
+      // Simulate first to surface real Solana program errors
+      // (Phantom's "Unexpected error" hides the actual cause)
+      try {
+        const simResult = await connection.simulateTransaction(receiveTx, {
+          sigVerify: false,
+          commitment: "confirmed",
+        });
+        if (simResult.value.err) {
+          console.error("[useSolanaReceive] simulation failed:", simResult.value.err);
+          console.error("[useSolanaReceive] simulation logs:", simResult.value.logs);
+          const logs = simResult.value.logs?.join("\n") ?? "";
+          throw new Error(
+            `Solana simulation: ${JSON.stringify(simResult.value.err)} — ${logs.slice(-300)}`
+          );
+        }
+        console.log("[useSolanaReceive] simulation OK, CU used:", simResult.value.unitsConsumed);
+      } catch (simErr) {
+        // Re-throw with more context
+        throw simErr;
+      }
+
       const signature = await sendTransaction(receiveTx, connection, {
-        skipPreflight: false,
+        skipPreflight: true, // Skip preflight since we already simulated
         maxRetries: 3,
       });
 
