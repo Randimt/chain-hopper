@@ -6,6 +6,7 @@ import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { loadBridgeHistory, type BridgeRecord } from "@/lib/bridge-history";
+import { SolanaBalanceRow } from "@/components/solana-balance-row";
 
 function StatCard({
   label,
@@ -207,6 +208,9 @@ export default function DashboardPage() {
               Bridge →
             </Link>
           </div>
+
+          {/* Solana view-only row */}
+          <SolanaBalanceRow />
 
           {balances.length === 0 ? (
             <div className="text-center py-8 text-sm text-zinc-500">

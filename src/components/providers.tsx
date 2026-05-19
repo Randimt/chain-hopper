@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { Toaster } from "react-hot-toast";
 
 import { config } from "@/lib/wagmi";
+import { SolanaProvider } from "@/components/solana-provider";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -23,7 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
             borderRadius: "medium",
           })}
         >
-          {children}
+          <SolanaProvider>{children}</SolanaProvider>
           <Toaster
             position="top-right"
             toastOptions={{

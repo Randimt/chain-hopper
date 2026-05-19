@@ -7,6 +7,7 @@ import { useAccount, useChainId, useDisconnect } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import toast from "react-hot-toast";
 import { CHAIN_INFO } from "@/lib/wagmi";
+import { SolanaWalletButton } from "@/components/solana-wallet-button";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
@@ -132,6 +133,8 @@ export function TopNav() {
             </span>
             <span className="leading-none">Testnet</span>
           </div>
+
+          <SolanaWalletButton />
 
           {isConnected && address ? (
             <div className="relative" ref={walletMenuRef}>
