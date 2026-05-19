@@ -13,6 +13,7 @@ import { SettingsDrawer } from "./settings-drawer";
 import { CHAIN_INFO, USDC_ADDRESSES, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
 import { isSolanaChain } from "@/lib/cctp";
 import { useBridge } from "@/hooks/useBridge";
+import { useCircleBridge } from "@/hooks/useCircleBridge";
 import { useRelayBridge } from "@/hooks/useRelayBridge";
 import { useAcrossBridge } from "@/hooks/useAcrossBridge";
 import { useSolanaReceive } from "@/hooks/useSolanaReceive";
@@ -100,6 +101,7 @@ export function BridgeForm() {
   const [userPickedProvider, setUserPickedProvider] = useState<boolean>(false);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const { state, approve, bridge, resume, reset, markSolanaReceiveComplete } = useBridge();
+  const circleBridge = useCircleBridge();
   const {
     state: relayState,
     bridge: relayBridge,
@@ -353,6 +355,33 @@ export function BridgeForm() {
       solanaReceiveReset();
     }
   }, [state.status, solanaReceiveReset]);
+
+  // ============ Circle Bridge Kit toast tracking (EVM → Solana) ============
+  const prevCircleStatusRef = useRef<string>("idle");
+  useEffect(() => {
+    const prev = prevCircleStatusRef.current;
+    const curr = circleBridge.status;
+    if (prev !== curr) {
+      if (curr === "preparing") {
+        toast.loading("Preparing cross-chain bridge...", { id: "circle-bridge" });
+      }
+      if (curr === "bridging") {
+        toast.loading("Bridge in progress — sign prompts in both wallets", {
+          id: "circle-bridge",
+        });
+      }
+      if (curr === "complete") {
+        toast.success("Bridge complete — USDC delivered to Solana", {
+          id: "circle-bridge",
+        });
+        if (address) clearPendingBridge(address);
+      }
+      if (curr === "error") {
+        toast.error(circleBridge.error ?? "Bridge failed", { id: "circle-bridge" });
+      }
+    }
+    prevCircleStatusRef.current = curr;
+  }, [circleBridge.status, circleBridge.error, address]);
 
   // ============ CCTP toast / history tracking ============
   const prevStatusRef = useRef<string>("idle");
@@ -700,7 +729,8 @@ export function BridgeForm() {
   const solanaProcessing = ["building", "awaiting-signature", "creating-ata", "confirming-ata", "confirming"].includes(
     solanaReceiveStatus,
   );
-  const isProcessing = cctpProcessing || relayProcessing || acrossProcessing || solanaProcessing;
+  const circleProcessing = circleBridge.status === "preparing" || circleBridge.status === "bridging";
+  const isProcessing = cctpProcessing || relayProcessing || acrossProcessing || solanaProcessing || circleProcessing;
 
   // CCTP-specific
   const isApproved = state.status === "approved";
@@ -744,6 +774,15 @@ export function BridgeForm() {
         toast.error("Connect Phantom wallet first to bridge to Solana");
         return;
       }
+
+      // EVM → Solana: route through Circle's official Bridge Kit
+      // (drops the homegrown receiveMessage path entirely)
+      void circleBridge.bridge({
+        sourceChainId: sourceChain,
+        amount,
+        recipientAddress: solanaPublicKey.toBase58(),
+      });
+      return;
     }
 
     if (selectedProvider === "cctp") {
