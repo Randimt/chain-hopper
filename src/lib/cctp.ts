@@ -23,6 +23,7 @@ import {
   pharosTestnet,
   morphHoodiTestnet,
   edgeTestnet,
+  SOLANA_DEVNET_CHAIN_ID,
 } from "./wagmi";
 
 // CCTP V2 testnet contracts (uniform across all supported testnets)
@@ -59,7 +60,23 @@ export const CCTP_DOMAINS: Record<number, number> = {
   [injectiveTestnet.id]: 29,
   [morphHoodiTestnet.id]: 30,
   [pharosTestnet.id]: 31,
+  // Non-EVM: Solana Devnet (synthetic chain ID for routing)
+  [SOLANA_DEVNET_CHAIN_ID]: 5,
 };
+
+// Solana CCTP V2 program addresses (devnet & mainnet — same IDs)
+// Source: https://developers.circle.com/cctp/solana-programs
+export const SOLANA_CCTP_PROGRAMS = {
+  tokenMessengerMinter: "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe",
+  messageTransmitter: "CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC",
+} as const;
+
+// Solana Devnet USDC mint
+export const SOLANA_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+
+export function isSolanaChain(chainId: number): boolean {
+  return chainId === SOLANA_DEVNET_CHAIN_ID;
+}
 
 // Chains that support CCTP V2 Fast Transfer (~8-30s)
 // Other chains use Standard Transfer only (their native finality is faster
@@ -96,6 +113,55 @@ export function chainIdToDomain(chainId: number): number {
 export function addressToBytes32(address: `0x${string}`): `0x${string}` {
   const cleaned = address.toLowerCase().replace(/^0x/, "");
   return `0x000000000000000000000000${cleaned}` as `0x${string}`;
+}
+
+// Encode Solana Pubkey (base58, 32 bytes) → bytes32 hex for EVM mintRecipient
+// Used when bridging EVM → Solana: recipient is a Solana address.
+export function solanaPubkeyToBytes32(base58Address: string): `0x${string}` {
+  // Lazy-loaded to avoid heavy bundle in EVM-only flows
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const bs58 = require("bs58") as { decode: (s: string) => Uint8Array };
+  const bytes = bs58.decode(base58Address);
+  if (bytes.length !== 32) {
+    throw new Error(
+      `Invalid Solana pubkey: expected 32 bytes, got ${bytes.length}`
+    );
+  }
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return `0x${hex}` as `0x${string}`;
+}
+
+// Decode bytes32 hex → Solana Pubkey (base58)
+// Used when bridging Solana → EVM: source/dest fields decoded.
+export function bytes32ToSolanaPubkey(hex: `0x${string}`): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const bs58 = require("bs58") as { encode: (b: Uint8Array) => string };
+  const cleaned = hex.replace(/^0x/, "");
+  if (cleaned.length !== 64) {
+    throw new Error(
+      `Invalid bytes32: expected 64 hex chars, got ${cleaned.length}`
+    );
+  }
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(cleaned.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bs58.encode(bytes);
+}
+
+// Derive Associated Token Account (ATA) for Solana USDC recipient.
+// CCTP mints USDC into the recipient's ATA, so mintRecipient = ATA address
+// (NOT the wallet pubkey). The ATA may not exist yet; CCTP will create it.
+// Async because @solana/spl-token loads PublicKey via Web3.js.
+export async function deriveSolanaUsdcAta(walletPubkey: string): Promise<string> {
+  const { PublicKey } = await import("@solana/web3.js");
+  const { getAssociatedTokenAddressSync } = await import("@solana/spl-token");
+  const owner = new PublicKey(walletPubkey);
+  const mint = new PublicKey(SOLANA_USDC_MINT);
+  const ata = getAssociatedTokenAddressSync(mint, owner, true);
+  return ata.toBase58();
 }
 
 // CCTP V2 TokenMessenger ABI — depositForBurn function only
