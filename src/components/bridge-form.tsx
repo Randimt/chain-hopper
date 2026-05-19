@@ -239,6 +239,14 @@ export function BridgeForm() {
 
   // Phase 1: Auto-prepare transaction when ready (background)
   useEffect(() => {
+    console.log("[bridge-form] Solana prepare effect:", {
+      status: state.status,
+      hasMessage: !!state.solanaMessage,
+      hasAttestation: !!state.solanaAttestation,
+      hasRecipient: !!state.solanaRecipient,
+      solanaConnected,
+      currentSolanaStatus: solanaReceiveStatus,
+    });
     if (
       state.status !== "awaiting-solana-receive" ||
       !state.solanaMessage ||
@@ -248,6 +256,7 @@ export function BridgeForm() {
     ) {
       return;
     }
+    console.log("[bridge-form] calling solanaPrepare()");
     solanaPrepare({
       messageHex: state.solanaMessage,
       attestationHex: state.solanaAttestation,
@@ -262,16 +271,26 @@ export function BridgeForm() {
     state.solanaRecipient,
     solanaConnected,
     solanaPrepare,
+    solanaReceiveStatus,
   ]);
 
   // Phase 2: Click handler — fires sign popup from genuine user gesture
   const triggerSolanaReceive = useCallback(() => {
+    console.log("[bridge-form] triggerSolanaReceive clicked, status:", solanaReceiveStatus);
     if (!solanaConnected) {
       toast.error("Connect Phantom or Backpack first");
       return;
     }
     if (solanaReceiveStatus === "building") {
       toast.error("Transaction still preparing — try again in a sec");
+      return;
+    }
+    if (solanaReceiveStatus === "error") {
+      toast.error("Tx prep failed — refresh page and click Resume");
+      return;
+    }
+    if (solanaReceiveStatus !== "ready") {
+      toast.error(`Unexpected state: ${solanaReceiveStatus} — try refresh`);
       return;
     }
 
