@@ -256,6 +256,17 @@ export function BridgeForm() {
   // Advance queue helper — called after bridge complete
   const advanceQueueAndRedirect = useCallback(() => {
     if (!address || !activeQueue) return;
+
+    // Reset bridge states FIRST so UI shows "Bridge" button, not "Bridge Again",
+    // when next output's URL prefill kicks in. Prevents user from clicking
+    // "Bridge Again" (which wipes amount) before realizing auto-advance happened.
+    reset();
+    relayReset();
+    acrossReset();
+    setSelectedProvider(null);
+    setUserPickedProvider(false);
+    recipeRunMarkedRef.current = false; // re-arm markRun for next output
+
     const updated = advanceRecipeQueue(address, "completed");
     if (!updated || isQueueComplete(updated)) {
       // Queue done — clear and toast
@@ -286,7 +297,7 @@ export function BridgeForm() {
     setTimeout(() => {
       router.push(`/bridge?${params.toString()}`);
     }, 1500);
-  }, [address, activeQueue, router]);
+  }, [address, activeQueue, router, reset, relayReset, acrossReset]);
 
   const handleSelectProvider = (provider: QuoteProvider) => {
     setSelectedProvider(provider);
@@ -1003,7 +1014,11 @@ export function BridgeForm() {
     reset();
     relayReset();
     acrossReset();
-    setAmount("");
+    // Preserve amount if there's an active recipe queue (auto-advance scenario):
+    // URL params will re-prefill amount but only on params change, not on state reset.
+    if (!activeQueue) {
+      setAmount("");
+    }
     setSelectedProvider(null);
     setUserPickedProvider(false);
   };
