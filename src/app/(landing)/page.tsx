@@ -176,11 +176,10 @@ function VisionSection() {
         </span>
       </h2>
       <p className="text-lg text-zinc-400 leading-relaxed max-w-2xl mb-16">
-        You have <strong className="text-zinc-100">200 USDC on Arbitrum</strong>. You need{" "}
-        <strong className="text-zinc-100">100 USDT on Polygon</strong> +{" "}
-        <strong className="text-zinc-100">50 ETH worth on Base</strong>. Today you&apos;d open three apps,
+        You have <strong className="text-zinc-100">300 USDC on Sepolia</strong>. You want to split it{" "}
+        <strong className="text-zinc-100">across Base + Arc + Solana</strong>. Today you&apos;d open three bridges,
         sign six transactions, and burn thirty minutes of your life.{" "}
-        <em className="text-cyan-300 not-italic">We&apos;re building something better.</em>
+        <em className="text-cyan-300 not-italic">We built something better.</em>
       </p>
 
       <div className="rounded-2xl border border-cyan-500/20 p-7 sm:p-8 mb-12 max-w-2xl"
@@ -189,9 +188,9 @@ function VisionSection() {
           scenario
         </div>
         <p className="text-base sm:text-[17px] leading-[1.7] text-zinc-300">
-          <strong className="text-zinc-100">From:</strong> 200 USDC on Arbitrum
+          <strong className="text-zinc-100">From:</strong> 300 USDC on Sepolia
           <br />
-          <strong className="text-zinc-100">To:</strong> 100 USDT on Polygon + 50 ETH on Base
+          <strong className="text-zinc-100">To:</strong> 40% Base + 30% Arc + 30% Solana
         </p>
       </div>
 
@@ -205,15 +204,15 @@ function VisionSection() {
           </div>
           <div className="text-2xl font-bold tracking-tight mb-6">Manual flow</div>
           <ul className="space-y-3.5 flex-1 mb-6">
-            <CompareRow tone="bad" num={1} title="Open Across or Stargate" sub="Bridge 100 USDC ARB → POL" />
-            <CompareRow tone="bad" num={2} title="Wait 5–10 minutes" sub="Watch the bridge confirm" />
-            <CompareRow tone="bad" num={3} title="Open 1inch" sub="Swap USDC → USDT on Polygon" />
-            <CompareRow tone="bad" num={4} title="Open bridge again" sub="Bridge 50 USDC ARB → BASE" />
-            <CompareRow tone="bad" num={5} title="Wait 5–10 minutes" sub="More clicking, more waiting" />
-            <CompareRow tone="bad" num={6} title="Open 1inch again" sub="Swap USDC → ETH on Base" />
+            <CompareRow tone="bad" num={1} title="Open CCTP bridge" sub="Bridge 120 USDC SEP → BASE" />
+            <CompareRow tone="bad" num={2} title="Wait for attestation" sub="Watch the bridge confirm" />
+            <CompareRow tone="bad" num={3} title="Open another bridge" sub="Bridge 90 USDC SEP → ARC" />
+            <CompareRow tone="bad" num={4} title="Wait again" sub="More clicking, more waiting" />
+            <CompareRow tone="bad" num={5} title="Open Solana bridge" sub="Bridge 90 USDC SEP → Solana" />
+            <CompareRow tone="bad" num={6} title="Switch wallets" sub="MetaMask + Phantom dance" />
           </ul>
           <div className="pt-5 border-t border-white/5 font-mono text-xs uppercase tracking-[0.1em] text-red-500">
-            6 steps · 3 apps · 30+ min · $5–10 lost to fees
+            6 steps · 3 apps · 30+ min · context-switch fatigue
           </div>
         </div>
 
@@ -226,14 +225,14 @@ function VisionSection() {
             <span>+</span>
             <span>The Lyxsa Way</span>
           </div>
-          <div className="text-2xl font-bold tracking-tight mb-6">One step. One app.</div>
+          <div className="text-2xl font-bold tracking-tight mb-6">One recipe. One click.</div>
           <ul className="space-y-3.5 flex-1 mb-6">
-            <CompareRow tone="good" num={1} title="Pick your recipe" sub={"\"Arb USDC → 100 USDT POL + 50 ETH BASE\""} />
-            <CompareRow tone="good" num={2} title="Click Execute" sub="Batch tx auto-handles bridge + swap" />
-            <CompareRow tone="good" num={3} title="Done" sub="Tokens land on destination chains" />
+            <CompareRow tone="good" num={1} title="Save your recipe" sub={"\"Sepolia USDC → 40% Base + 30% Arc + 30% Solana\""} />
+            <CompareRow tone="good" num={2} title="Click Run" sub="Sequential queue auto-handles each output" />
+            <CompareRow tone="good" num={3} title="Done" sub="USDC lands on every destination chain" />
           </ul>
           <div className="pt-5 border-t border-white/5 font-mono text-xs uppercase tracking-[0.1em] text-green-500">
-            1 step · 1 app · ~30 sec · transparent fees
+            1 recipe · 22 EVM + Solana · ~30 sec/output · transparent fees
           </div>
         </div>
       </div>
