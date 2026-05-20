@@ -481,7 +481,7 @@ function LandingFooter() {
             Cross-chain USDC bridging powered by Circle CCTP V2. The first-party protocol from USDC&apos;s creator.
           </p>
           <div className="flex gap-2.5">
-            <SocialLink label="𝕏" href="https://x.com/randmt5" />
+            <SocialLink label="𝕏" href="https://x.com/ini_lerand" />
             <SocialLink label="⌨" href="https://github.com/Randimt/chain-hopper" />
             <SocialLink label="💬" href="#" />
           </div>
@@ -506,14 +506,14 @@ function LandingFooter() {
         <FooterCol
           title="Connect"
           links={[
-            { label: "Twitter", href: "https://x.com/randmt5" },
+            { label: "Twitter", href: "https://x.com/ini_lerand" },
             { label: "GitHub", href: "https://github.com/Randimt" },
             { label: "Email", href: "mailto:randmt24@gmail.com" },
           ]}
         />
       </div>
       <div className="max-w-6xl mx-auto pt-8 border-t border-white/5 flex justify-between flex-wrap gap-3 text-[13px] text-zinc-500">
-        <div>© 2026 Plix · Built by @randmt5</div>
+        <div>© 2026 Plix · Built by @ini_lerand</div>
         <div>Testnet · Not production · MIT License</div>
       </div>
     </footer>
