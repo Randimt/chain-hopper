@@ -91,10 +91,10 @@ const sonicBlazeWithRpc = {
   },
 };
 
-// Plix supported chains — ALL CCTP V2 testnets (22 total)
+// Lyxsa supported chains — ALL CCTP V2 testnets (22 total)
 // All chains support CCTP V2 burn-and-mint via TokenMessenger.
 export const config = getDefaultConfig({
-  appName: "Plix",
+  appName: "Lyxsa",
   projectId,
   chains: [
     // Tier 1: Most popular / battle-tested

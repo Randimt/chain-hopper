@@ -28,7 +28,7 @@ export async function getLifiQuote(
     ...noRouteQuote(
       "lifi",
       request,
-      "LiFi liquidity is mainnet-only. Activates when Plix migrates to mainnet.",
+      "LiFi liquidity is mainnet-only. Activates when Lyxsa migrates to mainnet.",
     ),
     // Keep a hint of what would be available so users see expected fee/ETA
     amountInFormatted: formatUSDC(request.amountIn),

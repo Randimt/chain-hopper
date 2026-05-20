@@ -92,9 +92,9 @@ export function TopNav() {
             className="flex items-center gap-2 h-9 font-bold text-base text-zinc-100 hover:text-white transition-colors shrink-0"
           >
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center text-white font-black text-xs">
-              P
+              L
             </div>
-            <span className="hidden sm:inline leading-none">Plix</span>
+            <span className="hidden sm:inline leading-none">Lyxsa</span>
           </Link>
 
           <div className="hidden lg:flex items-center gap-1 h-9">
