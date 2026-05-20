@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useAccount, useReadContracts } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
-import { USDC_ADDRESSES, CHAIN_INFO } from "@/lib/wagmi";
+import { USDC_ADDRESSES, CHAIN_INFO, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
+import { useSolanaUsdcBalance } from "@/hooks/useSolanaBalance";
 import { BalanceSkeleton } from "./balance-skeleton";
 
 const CHAIN_IDS = Object.keys(USDC_ADDRESSES).map(Number);
@@ -31,13 +32,18 @@ export function UsdcBalancesCompact() {
     },
   });
 
+  // Solana balance (independent connection, doesn't gate on EVM wallet)
+  const solana = useSolanaUsdcBalance();
+  const solanaBalance = parseFloat(solana.balance);
+  const solanaInfo = CHAIN_INFO[SOLANA_DEVNET_CHAIN_ID];
+
   const handleSelectChain = (chainId: number) => {
     window.dispatchEvent(
       new CustomEvent("plix:set-source-chain", { detail: { chainId } })
     );
   };
 
-  if (!isConnected) {
+  if (!isConnected && !solana.connected) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-center">
         <p className="text-sm text-zinc-400">Connect wallet to see balances</p>
@@ -57,12 +63,20 @@ export function UsdcBalancesCompact() {
     );
   }
 
-  const balances = CHAIN_IDS.map((chainId, i) => {
+  const evmBalances = CHAIN_IDS.map((chainId, i) => {
     const result = data?.[i];
     const raw = result?.status === "success" ? (result.result as bigint) : BigInt(0);
     const formatted = parseFloat(formatUnits(raw, 6));
     return { chainId, balance: formatted, info: CHAIN_INFO[chainId] };
   });
+
+  // Append Solana row if connected
+  const balances = solana.connected
+    ? [
+        ...evmBalances,
+        { chainId: SOLANA_DEVNET_CHAIN_ID, balance: solanaBalance, info: solanaInfo },
+      ]
+    : evmBalances;
 
   const total = balances.reduce((sum, b) => sum + b.balance, 0);
   const nonZero = balances.filter((b) => b.balance > 0);
@@ -88,40 +102,48 @@ export function UsdcBalancesCompact() {
       {/* Chain list */}
       {visible.length > 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden">
-          {visible.map(({ chainId, balance, info }, i) => (
-            <button
-              key={chainId}
-              type="button"
-              onClick={() => handleSelectChain(chainId)}
-              className={`group flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
-                i > 0 ? "border-t border-zinc-800/50" : ""
-              } ${
-                balance > 0
-                  ? "hover:bg-zinc-800/50"
-                  : "opacity-50 hover:opacity-80 hover:bg-zinc-800/30"
-              }`}
-              title={`Set ${info.name} as source chain`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                <span className="text-base shrink-0">{info.logo}</span>
-                <span className="text-sm font-medium text-zinc-300 truncate">{info.name}</span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-sm font-semibold tabular-nums text-zinc-200">
-                  {balance.toFixed(2)}
-                </span>
-                <svg
-                  className="h-3.5 w-3.5 text-zinc-600 group-hover:text-cyan-400 transition-colors"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </button>
-          ))}
+          {visible.map(({ chainId, balance, info }, i) => {
+            const isSolana = chainId === SOLANA_DEVNET_CHAIN_ID;
+            return (
+              <button
+                key={chainId}
+                type="button"
+                onClick={() => handleSelectChain(chainId)}
+                className={`group flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors ${
+                  i > 0 ? "border-t border-zinc-800/50" : ""
+                } ${
+                  balance > 0
+                    ? "hover:bg-zinc-800/50"
+                    : "opacity-50 hover:opacity-80 hover:bg-zinc-800/30"
+                }`}
+                title={`Set ${info.name} as source chain`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="text-base shrink-0">{info.logo}</span>
+                  <span className="text-sm font-medium text-zinc-300 truncate">{info.name}</span>
+                  {isSolana && (
+                    <span className="shrink-0 rounded bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-purple-300 ring-1 ring-inset ring-purple-500/30">
+                      SOL
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-semibold tabular-nums text-zinc-200">
+                    {balance.toFixed(2)}
+                  </span>
+                  <svg
+                    className="h-3.5 w-3.5 text-zinc-600 group-hover:text-cyan-400 transition-colors"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </button>
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-6 text-center">
@@ -151,6 +173,15 @@ export function UsdcBalancesCompact() {
             ? "Hide zero balances"
             : `+ ${zeroCount} chain${zeroCount === 1 ? "" : "s"} with $0.00`}
         </button>
+      )}
+
+      {/* Hint kalau Phantom belum connected */}
+      {!solana.connected && (
+        <div className="rounded-lg border border-purple-900/40 bg-purple-950/10 px-4 py-2.5 text-center">
+          <p className="text-xs text-purple-300/80">
+            Connect Solana wallet to see Devnet USDC balance
+          </p>
+        </div>
       )}
     </div>
   );
