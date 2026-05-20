@@ -12,6 +12,7 @@ import { SolanaWalletButton } from "@/components/solana-wallet-button";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/bridge", label: "Bridge" },
+  { href: "/recipes", label: "Recipes", beta: true },
   { href: "/swap", label: "Swap", soon: true },
   { href: "/history", label: "History" },
 ];
@@ -113,6 +114,11 @@ export function TopNav() {
                   {item.soon && (
                     <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 text-[9px] font-bold tracking-wider uppercase leading-none">
                       Soon
+                    </span>
+                  )}
+                  {item.beta && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[9px] font-bold tracking-wider uppercase leading-none">
+                      Beta
                     </span>
                   )}
                   {active && (
@@ -292,6 +298,11 @@ export function TopNav() {
                   {item.soon && (
                     <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 text-[10px] font-bold tracking-wider uppercase">
                       Soon
+                    </span>
+                  )}
+                  {item.beta && (
+                    <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[10px] font-bold tracking-wider uppercase">
+                      Beta
                     </span>
                   )}
                 </Link>
