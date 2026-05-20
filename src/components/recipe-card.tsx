@@ -154,7 +154,7 @@ export function RecipeCard({
           )}
           {!onRun && !onEdit && !onDelete && (
             <span className="text-[10px] text-zinc-600 italic px-2 leading-none">
-              Run actions enable in Stage 4
+              Read-only preview
             </span>
           )}
         </div>

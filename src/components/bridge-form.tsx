@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useSearchParams } from "next/navigation";
 import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
 import toast from "react-hot-toast";
@@ -21,6 +22,7 @@ import { useSolanaReceive } from "@/hooks/useSolanaReceive";
 import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
 import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
+import { useRecipes } from "@/hooks/useRecipes";
 
 const STORAGE_KEY = "chain-hopper:pending-bridge";
 
@@ -94,9 +96,14 @@ function TxLink({
 
 export function BridgeForm() {
   const { address, isConnected } = useAccount();
+  const searchParams = useSearchParams();
+  const { markRun } = useRecipes();
   const [sourceChain, setSourceChain] = useState<number>(sepolia.id);
   const [destChain, setDestChain] = useState<number>(baseSepolia.id);
   const [amount, setAmount] = useState<string>("");
+  const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
+  const [activeRecipeName, setActiveRecipeName] = useState<string | null>(null);
+  const recipeRunMarkedRef = useRef(false);
   const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<QuoteProvider | null>(null);
   const [userPickedProvider, setUserPickedProvider] = useState<boolean>(false);
@@ -176,10 +183,9 @@ export function BridgeForm() {
   // Listen for "set source chain" event from balance list (compact balances click)
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ chainId: number }>).detail;
-      if (!detail || typeof detail.chainId !== "number") return;
-      const target = detail.chainId;
-      if (target === sourceChain) return;
+      const custom = e as CustomEvent<number>;
+      const target = custom.detail;
+      if (typeof target !== "number") return;
       // If user picks current dest, swap chains instead of duplicating
       if (target === destChain) {
         setDestChain(sourceChain);
@@ -189,6 +195,35 @@ export function BridgeForm() {
     window.addEventListener("plix:set-source-chain", handler);
     return () => window.removeEventListener("plix:set-source-chain", handler);
   }, [sourceChain, destChain]);
+
+  // Recipe prefill — read URL params on mount + when params change
+  useEffect(() => {
+    const fromParam = searchParams.get("from");
+    const toParam = searchParams.get("to");
+    const amountParam = searchParams.get("amount");
+    const recipeId = searchParams.get("recipeId");
+    const recipeName = searchParams.get("recipeName");
+
+    if (fromParam) {
+      const fromNum = Number(fromParam);
+      if (!Number.isNaN(fromNum)) setSourceChain(fromNum);
+    }
+    if (toParam) {
+      const toNum = Number(toParam);
+      if (!Number.isNaN(toNum)) setDestChain(toNum);
+    }
+    if (amountParam) {
+      // Validate is a positive number-ish string
+      if (/^\d+(\.\d+)?$/.test(amountParam) && Number(amountParam) > 0) {
+        setAmount(amountParam);
+      }
+    }
+    if (recipeId) {
+      setActiveRecipeId(recipeId);
+      setActiveRecipeName(recipeName || "Recipe");
+      recipeRunMarkedRef.current = false; // reset on new recipe load
+    }
+  }, [searchParams]);
 
   const handleSelectProvider = (provider: QuoteProvider) => {
     setSelectedProvider(provider);
@@ -375,6 +410,11 @@ export function BridgeForm() {
         toast.success("Bridge complete — USDC delivered to Solana", {
           id: "circle-bridge",
         });
+        // Mark recipe run if active (only once per run)
+        if (activeRecipeId && !recipeRunMarkedRef.current) {
+          markRun(activeRecipeId);
+          recipeRunMarkedRef.current = true;
+        }
         if (address) clearPendingBridge(address);
       }
       if (curr === "error") {
@@ -411,6 +451,11 @@ export function BridgeForm() {
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC minted");
+      // Mark recipe run if active (only once per run)
+      if (activeRecipeId && !recipeRunMarkedRef.current) {
+        markRun(activeRecipeId);
+        recipeRunMarkedRef.current = true;
+      }
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -508,6 +553,11 @@ export function BridgeForm() {
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC delivered via Relay");
+      // Mark recipe run if active (only once per run)
+      if (activeRecipeId && !recipeRunMarkedRef.current) {
+        markRun(activeRecipeId);
+        recipeRunMarkedRef.current = true;
+      }
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -605,6 +655,11 @@ export function BridgeForm() {
     } else if (curr === "complete") {
       toast.dismiss("bridge-progress");
       toast.success("Bridge complete — USDC delivered via Across");
+      // Mark recipe run if active (only once per run)
+      if (activeRecipeId && !recipeRunMarkedRef.current) {
+        markRun(activeRecipeId);
+        recipeRunMarkedRef.current = true;
+      }
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -1009,6 +1064,54 @@ export function BridgeForm() {
   return (
     <>
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6 space-y-5 sm:space-y-6">
+        {/* Recipe Active Banner */}
+        {activeRecipeId && (
+          <div className="-mb-1 rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-500/[0.08] to-pink-500/[0.05] p-3.5">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center text-base shrink-0">
+                🍳
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
+                    Running recipe
+                  </span>
+                  <span className="text-[10px] text-zinc-500">·</span>
+                  <span className="text-[10px] text-zinc-500">
+                    Output 1 of 1 (single-output mode)
+                  </span>
+                </div>
+                <p className="text-sm font-semibold text-zinc-100 truncate">
+                  {activeRecipeName}
+                </p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Form prefilled from recipe. Modify if needed, then proceed
+                  with the bridge.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveRecipeId(null);
+                  setActiveRecipeName(null);
+                  recipeRunMarkedRef.current = false;
+                  // Strip recipe params from URL without reload
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.delete("recipeId");
+                    url.searchParams.delete("recipeName");
+                    window.history.replaceState({}, "", url.toString());
+                  }
+                }}
+                className="text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded hover:bg-white/[0.04] leading-none shrink-0"
+                title="Detach from recipe"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between -mb-1">
           <div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { UsdcBalancesCompact } from "@/components/usdc-balances-compact";
 import { BridgeForm } from "@/components/bridge-form";
 
@@ -12,7 +13,15 @@ export default function BridgePage() {
         </aside>
 
         <section>
-          <BridgeForm />
+          <Suspense
+            fallback={
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-6 text-sm text-zinc-500">
+                Loading bridge form…
+              </div>
+            }
+          >
+            <BridgeForm />
+          </Suspense>
         </section>
       </div>
     </div>
