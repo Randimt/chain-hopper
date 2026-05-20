@@ -18,6 +18,7 @@ import { useAccount, useBalance } from "wagmi";
 import { ChainSelector } from "@/components/chain-selector";
 import { RecipeOutputRow } from "@/components/recipe-output-row";
 import { useRecipes } from "@/hooks/useRecipes";
+import { useSolanaUsdcBalance } from "@/hooks/useSolanaBalance";
 import {
   type Recipe,
   type RecipeOutput,
@@ -25,7 +26,7 @@ import {
   autoBalanceOutputs,
   validateRecipe,
 } from "@/lib/recipes-storage";
-import { USDC_ADDRESSES } from "@/lib/wagmi";
+import { USDC_ADDRESSES, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
 
 const MAX_OUTPUTS = 5;
 
@@ -90,6 +91,7 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Live USDC balance for source chain (warning if amount > balance)
+  const isSolanaSource = state.sourceChainId === SOLANA_DEVNET_CHAIN_ID;
   const sourceUsdcAddress =
     USDC_ADDRESSES[state.sourceChainId as keyof typeof USDC_ADDRESSES];
   const { data: balanceData } = useBalance({
@@ -97,9 +99,23 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
     token: sourceUsdcAddress as `0x${string}` | undefined,
     chainId: state.sourceChainId,
     query: {
-      enabled: !!address && !!sourceUsdcAddress,
+      enabled: !!address && !!sourceUsdcAddress && !isSolanaSource,
     },
   });
+  const solanaBalance = useSolanaUsdcBalance();
+
+  // Unified balance source — Solana for SVM, EVM otherwise
+  const balanceFormatted = isSolanaSource
+    ? solanaBalance.balance
+      ? Number(solanaBalance.balance).toFixed(2)
+      : null
+    : balanceData
+    ? Number(balanceData.formatted).toFixed(2)
+    : null;
+  const exceedsBalance =
+    balanceFormatted &&
+    state.totalAmount &&
+    Number(state.totalAmount) > Number(balanceFormatted);
 
   // Validation runs every render (cheap, pure)
   const validationErrors = useMemo(() => {
@@ -119,15 +135,6 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
 
   const totalPct = state.outputs.reduce((s, o) => s + o.percentage, 0);
   const isValid = validationErrors.length === 0;
-
-  // Balance warning (non-blocking — recipes can be saved with amount > balance)
-  const balanceFormatted = balanceData
-    ? Number(balanceData.formatted).toFixed(2)
-    : null;
-  const exceedsBalance =
-    balanceData &&
-    state.totalAmount &&
-    Number(state.totalAmount) > Number(balanceData.formatted);
 
   const updateField = <K extends keyof FormState>(
     key: K,
@@ -262,6 +269,7 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
           value={state.sourceChainId}
           onChange={handleSourceChange}
           label="Source Chain"
+          allowSolana
         />
 
         <div className="space-y-2">
