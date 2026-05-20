@@ -18,6 +18,7 @@ import {
 } from "@/lib/cctp";
 import { pollAttestation } from "@/lib/circle-api";
 import { friendlyError } from "@/lib/error-messages";
+import { waitForChainSync } from "@/lib/wait-for-chain";
 
 export type BridgeStatus =
   | "idle"
@@ -93,6 +94,12 @@ export function useBridge() {
         // Ensure wallet on source chain
         if (walletClient.chain?.id !== sourceChain) {
           await switchChainAsync({ chainId: sourceChain });
+          // Wait for wallet RPC + public client to settle on new chain.
+          // After switchChain, MetaMask resolves the promise BEFORE its
+          // internal RPC has fully propagated chain context. Firing
+          // writeContract() immediately causes "connection timeout" race.
+          // Poll until publicClient reports the new chain ID, max 5s.
+          await waitForChainSync(publicClient, sourceChain);
         }
 
         const usdcAddress = USDC_ADDRESSES[sourceChain];
@@ -154,6 +161,7 @@ export function useBridge() {
 
         if (walletClient.chain?.id !== sourceChain) {
           await switchChainAsync({ chainId: sourceChain });
+          await waitForChainSync(publicClient, sourceChain);
         }
 
         const sourceUsdc = USDC_ADDRESSES[sourceChain];

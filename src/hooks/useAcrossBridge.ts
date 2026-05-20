@@ -16,6 +16,7 @@ import {
   SPOKE_POOL_ABI,
 } from "@/lib/quotes/across";
 import { friendlyError } from "@/lib/error-messages";
+import { waitForChainSync } from "@/lib/wait-for-chain";
 
 export type AcrossBridgeStatus =
   | "idle"
@@ -113,6 +114,7 @@ export function useAcrossBridge() {
         // Ensure wallet on source chain
         if (walletClient.chain?.id !== sourceChain) {
           await switchChainAsync({ chainId: sourceChain });
+          await waitForChainSync(publicClient, sourceChain);
         }
 
         // ============ STEP 1: Check + Approve USDC ============

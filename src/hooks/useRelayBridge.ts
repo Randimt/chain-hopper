@@ -10,6 +10,7 @@ import {
 } from "@/lib/quotes/types";
 import { extractRelayTxs, pollRelayStatus } from "@/lib/quotes/relay";
 import { friendlyError } from "@/lib/error-messages";
+import { waitForChainSync } from "@/lib/wait-for-chain";
 
 export type RelayBridgeStatus =
   | "idle"
@@ -84,6 +85,7 @@ export function useRelayBridge() {
         // Ensure wallet on source chain
         if (walletClient.chain?.id !== sourceChain) {
           await switchChainAsync({ chainId: sourceChain });
+          await waitForChainSync(publicClient, sourceChain);
         }
 
         // ============ STEP 1: Approve (optional) ============
