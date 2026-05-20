@@ -200,16 +200,23 @@ export function useCircleBridge() {
         }
 
         // Lazy-load SDK — keeps initial bundle smaller for non-Solana flows
+        // SolanaDevnet chain definition is exported from bridge-kit, NOT adapter-solana
         const [
-          { BridgeKit },
+          { BridgeKit, SolanaDevnet },
           { createViemAdapterFromProvider },
-          { createSolanaAdapterFromProvider, SolanaDevnet },
+          { createSolanaAdapterFromProvider },
         ] = await Promise.all([
-          import("@circle-fin/bridge-kit"),
-          import("@circle-fin/adapter-viem-v2"),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          import("@circle-fin/adapter-solana") as any,
+          import("@circle-fin/bridge-kit") as any,
+          import("@circle-fin/adapter-viem-v2"),
+          import("@circle-fin/adapter-solana"),
         ]);
+
+        if (!SolanaDevnet) {
+          throw new Error(
+            "Circle SDK SolanaDevnet chain definition missing — package version mismatch"
+          );
+        }
 
         // Get EIP1193 provider from wagmi connector (MetaMask, Rabby, etc.)
         const eip1193Provider = await connector.getProvider();
