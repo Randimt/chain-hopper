@@ -132,7 +132,8 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
         </div>
 
         <div className="p-6 space-y-8">
-          {/* Experimental Routes Toggle */}
+          {/* Experimental Routes Toggle — HIDDEN: testnet liquidity unreliable, defer to mainnet */}
+          {/*
           <section className="space-y-3">
             <label className="flex items-start gap-3 p-4 rounded-md border border-zinc-800 bg-zinc-900/50 hover:border-zinc-700 cursor-pointer transition-colors">
               <input
@@ -163,6 +164,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
               </div>
             </label>
           </section>
+          */}
 
           {/* Slippage */}
           <section className="space-y-3">

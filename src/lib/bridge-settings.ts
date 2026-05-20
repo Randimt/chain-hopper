@@ -50,8 +50,9 @@ export function loadSettings(): BridgeSettings {
         ...(parsed.enabledProviders ?? {}),
       },
       autoRefreshSec: parsed.autoRefreshSec ?? DEFAULT_SETTINGS.autoRefreshSec,
-      experimentalRoutes:
-        parsed.experimentalRoutes ?? DEFAULT_SETTINGS.experimentalRoutes,
+      experimentalRoutes: false, // FORCED OFF: testnet liquidity unreliable, defer to mainnet
+      // experimentalRoutes:
+      //   parsed.experimentalRoutes ?? DEFAULT_SETTINGS.experimentalRoutes,
     };
   } catch {
     return DEFAULT_SETTINGS;
