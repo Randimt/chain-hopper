@@ -29,6 +29,10 @@ export interface BridgeRecord {
   recipeName?: string;
   recipeOutputIndex?: number;
   recipeTotalOutputs?: number;
+  /** Reclaim flow: Solana recipient (base58 pubkey) when destination is Solana — needed to rebuild receiveMessage tx */
+  solanaRecipient?: string;
+  /** Reclaim flow: marker — true if record was created via "Discard" on a pending burn (not via failure) */
+  reclaimable?: boolean;
 }
 
 function storageKey(address: string): string {

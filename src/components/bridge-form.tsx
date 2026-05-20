@@ -21,7 +21,7 @@ import { useAcrossBridge } from "@/hooks/useAcrossBridge";
 import { useSolanaReceive } from "@/hooks/useSolanaReceive";
 import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
-import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
+import { addBridgeRecord, generateBridgeId, loadBridgeHistory, type BridgeRecord } from "@/lib/bridge-history";
 import { useRecipes } from "@/hooks/useRecipes";
 import {
   loadRecipeQueue,
@@ -212,6 +212,7 @@ export function BridgeForm() {
     const amountParam = searchParams.get("amount");
     const recipeId = searchParams.get("recipeId");
     const recipeName = searchParams.get("recipeName");
+    const reclaimParam = searchParams.get("reclaim");
 
     if (fromParam) {
       const fromNum = Number(fromParam);
@@ -236,7 +237,46 @@ export function BridgeForm() {
       setActiveRecipeName(null);
       setActiveQueue(null);
     }
-  }, [searchParams]);
+
+    // Reclaim flow: load history record by ID, restore as pendingBridge state.
+    // User clicked "Reclaim" on a discarded/orphaned burn from /history.
+    if (reclaimParam && address) {
+      const records = loadBridgeHistory(address);
+      const record = records.find((r) => r.id === reclaimParam);
+      if (record && record.burnTxHash && record.status === "pending") {
+        setSourceChain(record.sourceChain);
+        setDestChain(record.destChain);
+        setAmount(record.amount);
+        const pending: PendingBridge = {
+          sourceChain: record.sourceChain,
+          destChain: record.destChain,
+          amount: record.amount,
+          burnTxHash: record.burnTxHash,
+          timestamp: record.startedAt,
+          solanaRecipient: record.solanaRecipient,
+        };
+        savePendingBridge(address, pending);
+        setPendingBridge(pending);
+        toast.success("Reclaim ready — click Resume Bridge to mint", {
+          duration: 5000,
+          id: "reclaim-ready",
+        });
+        // Strip the reclaim param so refresh doesn't double-trigger
+        const newParams = new URLSearchParams(searchParams.toString());
+        newParams.delete("reclaim");
+        const queryString = newParams.toString();
+        router.replace(queryString ? `/bridge?${queryString}` : "/bridge");
+      } else if (record && record.status !== "pending") {
+        toast.error("This bridge is no longer reclaimable (already complete)", {
+          id: "reclaim-error",
+        });
+      } else {
+        toast.error("Reclaim record not found in your history", {
+          id: "reclaim-error",
+        });
+      }
+    }
+  }, [searchParams, address]);
 
   // Load active queue from localStorage when recipe context active
   useEffect(() => {
@@ -1040,10 +1080,40 @@ export function BridgeForm() {
   };
 
   const handleDiscardPending = () => {
-    if (!address) return;
+    if (!address || !pendingBridge) {
+      if (address) clearPendingBridge(address);
+      setPendingBridge(null);
+      reset();
+      return;
+    }
+    // Save as RECLAIMABLE record in history before clearing pendingBridge state.
+    // This way users can reclaim the orphaned burn anytime later from /history.
+    try {
+      addBridgeRecord(address, {
+        id: generateBridgeId(),
+        provider: "cctp",
+        sourceChain: pendingBridge.sourceChain,
+        destChain: pendingBridge.destChain,
+        amount: pendingBridge.amount,
+        status: "pending",
+        burnTxHash: pendingBridge.burnTxHash,
+        startedAt: pendingBridge.timestamp,
+        solanaRecipient: pendingBridge.solanaRecipient,
+        reclaimable: true,
+        // Preserve recipe context if active
+        recipeId: activeRecipeId || undefined,
+        recipeName: activeRecipeName || undefined,
+      });
+      window.dispatchEvent(new Event("bridge-history-updated"));
+    } catch {
+      /* storage failure — proceed with clear anyway */
+    }
     clearPendingBridge(address);
     setPendingBridge(null);
     reset();
+    toast.success("Bridge saved for later — reclaim from History anytime", {
+      duration: 5000,
+    });
   };
 
   const handleBridgeAgain = () => {

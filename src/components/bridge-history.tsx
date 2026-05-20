@@ -68,9 +68,23 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
   const sourceExplorer = CHAIN_INFO[record.sourceChain]?.explorer;
   const destExplorer = CHAIN_INFO[record.destChain]?.explorer;
   const isRecipe = !!record.recipeId;
+  const canReclaim = record.status === "pending" && !!record.burnTxHash && !!record.reclaimable;
 
   return (
-    <div className={`rounded-lg border bg-zinc-950/50 overflow-hidden ${isRecipe ? "border-purple-500/20" : "border-zinc-800"}`}>
+    <div className={`rounded-lg border bg-zinc-950/50 overflow-hidden ${
+      canReclaim
+        ? "border-amber-500/30"
+        : isRecipe
+        ? "border-purple-500/20"
+        : "border-zinc-800"
+    }`}>
+      {/* Reclaim banner (if reclaimable) */}
+      {canReclaim && (
+        <div className="px-3 py-1.5 bg-gradient-to-r from-amber-500/[0.10] to-orange-500/[0.06] border-b border-amber-500/15 flex items-center gap-2 text-[11px]">
+          <span className="text-amber-400">🔄</span>
+          <span className="text-amber-300 font-medium">Reclaimable burn — burn confirmed but mint not yet executed</span>
+        </div>
+      )}
       {/* Recipe context header (if applicable) */}
       {isRecipe && (
         <div className="px-3 py-1.5 bg-gradient-to-r from-purple-500/[0.08] to-pink-500/[0.05] border-b border-purple-500/10 flex items-center gap-2 text-[11px]">
@@ -203,13 +217,28 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
               <span className="text-xs text-red-400">{record.errorMessage}</span>
             </div>
           )}
+
+          {/* Reclaim CTA (if reclaimable) */}
+          {canReclaim && (
+            <div className="pt-2 border-t border-zinc-800">
+              <a
+                href={`/bridge?reclaim=${record.id}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-semibold py-2 px-4 text-xs transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30"
+              >
+                🔄 Reclaim & mint on {CHAIN_INFO[record.destChain]?.name || `chain ${record.destChain}`}
+              </a>
+              <p className="text-[10px] text-zinc-500 mt-1.5">
+                Burn happened on {CHAIN_INFO[record.sourceChain]?.name}, mint never ran. CCTP attestations are permanent — claim anytime.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-type FilterType = "all" | "complete" | "failed" | "recipes";
+type FilterType = "all" | "complete" | "failed" | "recipes" | "reclaimable";
 
 export function BridgeHistory() {
   const { address, isConnected } = useAccount();
@@ -237,6 +266,8 @@ export function BridgeHistory() {
   const filtered = useMemo(() => {
     if (filter === "all") return history;
     if (filter === "recipes") return history.filter((r) => !!r.recipeId);
+    if (filter === "reclaimable")
+      return history.filter((r) => r.status === "pending" && !!r.burnTxHash && !!r.reclaimable);
     return history.filter((r) => r.status === filter);
   }, [history, filter]);
 
@@ -245,7 +276,8 @@ export function BridgeHistory() {
     const complete = history.filter((r) => r.status === "complete").length;
     const failed = history.filter((r) => r.status === "failed").length;
     const recipes = history.filter((r) => !!r.recipeId).length;
-    return { total, complete, failed, recipes };
+    const reclaimable = history.filter((r) => r.status === "pending" && !!r.burnTxHash && !!r.reclaimable).length;
+    return { total, complete, failed, recipes, reclaimable };
   }, [history]);
 
   const handleClear = () => {
@@ -267,7 +299,9 @@ export function BridgeHistory() {
           <h2 className="text-lg font-semibold text-zinc-100">Bridge History</h2>
           <p className="text-xs text-zinc-500 mt-0.5">
             {stats.total > 0
-              ? `${stats.total} total · ${stats.complete} complete · ${stats.failed} failed`
+              ? `${stats.total} total · ${stats.complete} complete · ${stats.failed} failed${
+                  stats.reclaimable > 0 ? ` · ${stats.reclaimable} reclaimable 🔄` : ""
+                }`
               : "Your past bridges will appear here"}
           </p>
         </div>
@@ -283,8 +317,8 @@ export function BridgeHistory() {
 
       {/* Filter tabs */}
       {history.length > 0 && (
-        <div className="flex gap-2 text-xs">
-          {(["all", "complete", "failed", "recipes"] as FilterType[]).map((f) => {
+        <div className="flex gap-2 text-xs flex-wrap">
+          {(["all", "complete", "failed", "recipes", "reclaimable"] as FilterType[]).map((f) => {
             const count =
               f === "all"
                 ? stats.total
@@ -292,9 +326,13 @@ export function BridgeHistory() {
                 ? stats.complete
                 : f === "failed"
                 ? stats.failed
-                : stats.recipes;
+                : f === "recipes"
+                ? stats.recipes
+                : stats.reclaimable;
             // Hide "recipes" tab if no recipe runs yet
             if (f === "recipes" && stats.recipes === 0) return null;
+            // Hide "reclaimable" tab if no reclaimable bridges
+            if (f === "reclaimable" && stats.reclaimable === 0) return null;
             return (
               <button
                 key={f}
@@ -303,11 +341,13 @@ export function BridgeHistory() {
                   filter === f
                     ? f === "recipes"
                       ? "border-purple-500/50 bg-purple-500/10 text-purple-300"
+                      : f === "reclaimable"
+                      ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
                       : "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
                     : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
                 }`}
               >
-                {f === "recipes" ? "🍳 Recipes" : f} ({count})
+                {f === "recipes" ? "🍳 Recipes" : f === "reclaimable" ? "🔄 Reclaimable" : f} ({count})
               </button>
             );
           })}
