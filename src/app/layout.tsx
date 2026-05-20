@@ -4,7 +4,7 @@ import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "Plix — One USDC, every chain",
-  description: "Native USDC bridging across 22 EVM testnets + Solana Devnet in 30 seconds. Powered by Circle CCTP V2.",
+  description: "Native USDC bridging across 22 EVM testnets + Solana Devnet in 30 seconds. Multi-output recipes & cross-VM bridge. Powered by Circle CCTP V2.",
 };
 
 export default function RootLayout({
