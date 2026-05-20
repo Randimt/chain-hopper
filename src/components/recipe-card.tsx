@@ -37,6 +37,31 @@ function formatTime(ts?: number): string {
   return new Date(ts).toLocaleDateString();
 }
 
+function getRunCountBadge(runCount: number): { className: string; label: string } {
+  if (runCount === 0) {
+    return {
+      className: "bg-zinc-800/60 text-zinc-500",
+      label: "New",
+    };
+  }
+  if (runCount >= 20) {
+    return {
+      className: "bg-purple-500/15 text-purple-300 border border-purple-500/20",
+      label: `${runCount}× POWER`,
+    };
+  }
+  if (runCount >= 5) {
+    return {
+      className: "bg-blue-500/10 text-blue-300",
+      label: `${runCount}× run`,
+    };
+  }
+  return {
+    className: "bg-emerald-500/10 text-emerald-400",
+    label: `${runCount}× run`,
+  };
+}
+
 interface RecipeCardProps {
   recipe: Recipe;
   /** Stage 3+ wires these. Stage 2 ignores. */
@@ -53,9 +78,14 @@ export function RecipeCard({
 }: RecipeCardProps) {
   const sourceInfo = getChainInfo(recipe.sourceChainId);
   const lastRun = formatTime(recipe.lastRunAt);
+  const fullDate = recipe.lastRunAt
+    ? new Date(recipe.lastRunAt).toLocaleString()
+    : "Never run";
+  const runCount = recipe.runCount ?? 0;
+  const badge = getRunCountBadge(runCount);
 
   return (
-    <div className="group relative rounded-2xl border border-white/[0.08] bg-zinc-950/80 p-5 hover:border-white/[0.15] hover:bg-zinc-900/50 transition-all">
+    <div className="group relative rounded-2xl border border-white/[0.08] bg-zinc-950/80 p-5 hover:border-white/[0.15] hover:bg-zinc-900/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/5 transition-all duration-200">
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="min-w-0 flex-1">
@@ -75,16 +105,13 @@ export function RecipeCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] text-zinc-500 shrink-0">
-          {recipe.runCount && recipe.runCount > 0 ? (
-            <span className="px-2 py-1 rounded bg-emerald-500/10 text-emerald-400 font-semibold tracking-wider uppercase">
-              {recipe.runCount}× run
-            </span>
-          ) : (
-            <span className="px-2 py-1 rounded bg-zinc-800/60 text-zinc-500 font-semibold tracking-wider uppercase">
-              New
-            </span>
-          )}
+        <div className="flex items-center gap-2 text-[10px] shrink-0">
+          <span
+            className={`px-2 py-1 rounded font-semibold tracking-wider uppercase leading-none ${badge.className}`}
+            title={runCount === 0 ? "Never run" : `${runCount} successful run${runCount > 1 ? "s" : ""}`}
+          >
+            {badge.label}
+          </span>
         </div>
       </div>
 
@@ -124,7 +151,10 @@ export function RecipeCard({
 
       {/* Footer — actions + meta */}
       <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/[0.06]">
-        <span className="text-[11px] text-zinc-500 tabular-nums leading-none">
+        <span
+          className="text-[11px] text-zinc-500 tabular-nums leading-none"
+          title={fullDate}
+        >
           Last run · {lastRun}
         </span>
         <div className="flex items-center gap-2">

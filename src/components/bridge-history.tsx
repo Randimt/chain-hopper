@@ -67,9 +67,25 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
 
   const sourceExplorer = CHAIN_INFO[record.sourceChain]?.explorer;
   const destExplorer = CHAIN_INFO[record.destChain]?.explorer;
+  const isRecipe = !!record.recipeId;
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 overflow-hidden">
+    <div className={`rounded-lg border bg-zinc-950/50 overflow-hidden ${isRecipe ? "border-purple-500/20" : "border-zinc-800"}`}>
+      {/* Recipe context header (if applicable) */}
+      {isRecipe && (
+        <div className="px-3 py-1.5 bg-gradient-to-r from-purple-500/[0.08] to-pink-500/[0.05] border-b border-purple-500/10 flex items-center gap-2 text-[11px]">
+          <span className="text-purple-400">🍳</span>
+          <span className="text-purple-300 font-medium truncate">
+            {record.recipeName || "Recipe run"}
+          </span>
+          {record.recipeOutputIndex !== undefined && record.recipeTotalOutputs !== undefined && (
+            <span className="text-zinc-500 shrink-0">
+              · output {record.recipeOutputIndex + 1} of {record.recipeTotalOutputs}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Summary row */}
       <button
         type="button"
@@ -193,7 +209,7 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
   );
 }
 
-type FilterType = "all" | "complete" | "failed";
+type FilterType = "all" | "complete" | "failed" | "recipes";
 
 export function BridgeHistory() {
   const { address, isConnected } = useAccount();
@@ -220,6 +236,7 @@ export function BridgeHistory() {
 
   const filtered = useMemo(() => {
     if (filter === "all") return history;
+    if (filter === "recipes") return history.filter((r) => !!r.recipeId);
     return history.filter((r) => r.status === filter);
   }, [history, filter]);
 
@@ -227,7 +244,8 @@ export function BridgeHistory() {
     const total = history.length;
     const complete = history.filter((r) => r.status === "complete").length;
     const failed = history.filter((r) => r.status === "failed").length;
-    return { total, complete, failed };
+    const recipes = history.filter((r) => !!r.recipeId).length;
+    return { total, complete, failed, recipes };
   }, [history]);
 
   const handleClear = () => {
@@ -266,22 +284,33 @@ export function BridgeHistory() {
       {/* Filter tabs */}
       {history.length > 0 && (
         <div className="flex gap-2 text-xs">
-          {(["all", "complete", "failed"] as FilterType[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-full border transition-colors capitalize ${
-                filter === f
-                  ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
-                  : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              {f}
-              {f === "all" && ` (${stats.total})`}
-              {f === "complete" && ` (${stats.complete})`}
-              {f === "failed" && ` (${stats.failed})`}
-            </button>
-          ))}
+          {(["all", "complete", "failed", "recipes"] as FilterType[]).map((f) => {
+            const count =
+              f === "all"
+                ? stats.total
+                : f === "complete"
+                ? stats.complete
+                : f === "failed"
+                ? stats.failed
+                : stats.recipes;
+            // Hide "recipes" tab if no recipe runs yet
+            if (f === "recipes" && stats.recipes === 0) return null;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1 rounded-full border transition-colors capitalize ${
+                  filter === f
+                    ? f === "recipes"
+                      ? "border-purple-500/50 bg-purple-500/10 text-purple-300"
+                      : "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
+                    : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                {f === "recipes" ? "🍳 Recipes" : f} ({count})
+              </button>
+            );
+          })}
         </div>
       )}
 

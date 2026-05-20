@@ -397,24 +397,30 @@ export default function RecipesPage() {
       {/* Empty state with templates */}
       {isConnected && !loading && recipes.length === 0 && (
         <div className="space-y-8">
-          <div className="rounded-2xl border border-white/[0.08] bg-zinc-950/80 p-10 text-center">
-            <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center text-3xl">
-              🍳
+          <div className="rounded-2xl border border-white/[0.08] bg-zinc-950/80 p-10 text-center overflow-hidden relative">
+            {/* Subtle background glow */}
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.03] via-transparent to-pink-500/[0.03] pointer-events-none" />
+            <div className="relative">
+              <div className="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center text-3xl animate-pulse">
+                🍳
+              </div>
+              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+                No recipes yet
+              </h3>
+              <p className="text-sm text-zinc-500 mb-6 max-w-lg mx-auto leading-relaxed">
+                Save bridge configs as reusable presets — multi-output, cross-VM,
+                refresh-safe queue. One click to save, one click to re-run forever.
+              </p>
+              <Link
+                href="/recipes/new"
+                className="inline-block h-10 leading-10 px-5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-semibold hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
+              >
+                Create Your First Recipe
+              </Link>
+              <p className="text-[11px] text-zinc-600 mt-4">
+                or pick a template below ↓
+              </p>
             </div>
-            <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-              No recipes yet
-            </h3>
-            <p className="text-sm text-zinc-500 mb-6 max-w-lg mx-auto">
-              A recipe saves a bridge configuration — source chain, total
-              amount, and one or more destination outputs. Re-run anytime
-              with a single click (coming Stage 4).
-            </p>
-            <Link
-              href="/recipes/new"
-              className="inline-block h-10 leading-10 px-5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-semibold hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
-            >
-              Create Your First Recipe
-            </Link>
           </div>
 
           {/* Template gallery */}
@@ -529,7 +535,7 @@ export default function RecipesPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-zinc-300 mb-1">
-                Phase 3 Recipes — Staged Rollout
+                Phase 3 Recipes — Shipped (Beta)
               </p>
               <ul className="text-[11px] text-zinc-500 space-y-0.5 leading-relaxed">
                 <li>✓ Stage 1 · Foundation (storage, validation, hook)</li>
@@ -538,8 +544,8 @@ export default function RecipesPage() {
                 <li>✓ Stage 4 · Single-output execution</li>
                 <li>✓ Stage 5 · Multi-output sequential queue</li>
                 <li>
-                  <span className="text-purple-300">▶ Stage 6</span> · Polish
-                  &amp; resilience (you are here)
+                  ✓ Stage 6 · Polish — resume banner, analytics, history tagging,
+                  mobile responsive, recruiter-tier
                 </li>
               </ul>
             </div>

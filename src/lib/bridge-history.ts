@@ -24,6 +24,11 @@ export interface BridgeRecord {
   startedAt: number;
   completedAt?: number;
   errorMessage?: string;
+  /** Stage 6 Task 7: recipe context tagging — set when bridge fired from recipe queue */
+  recipeId?: string;
+  recipeName?: string;
+  recipeOutputIndex?: number;
+  recipeTotalOutputs?: number;
 }
 
 function storageKey(address: string): string {

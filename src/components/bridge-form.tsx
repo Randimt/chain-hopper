@@ -553,6 +553,12 @@ export function BridgeForm() {
           mintTxHash: state.mintTxHash,
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -582,6 +588,12 @@ export function BridgeForm() {
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
           errorMessage: state.errorMessage,
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -657,6 +669,12 @@ export function BridgeForm() {
           mintTxHash: relayState.fillTxHash,
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -686,6 +704,12 @@ export function BridgeForm() {
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
           errorMessage: relayState.errorMessage,
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -761,6 +785,12 @@ export function BridgeForm() {
           mintTxHash: acrossState.fillTxHash,
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -790,6 +820,12 @@ export function BridgeForm() {
           startedAt: recordStartedAtRef.current,
           completedAt: Date.now(),
           errorMessage: acrossState.errorMessage,
+          ...(activeRecipeId && {
+            recipeId: activeRecipeId,
+            recipeName: activeRecipeName ?? undefined,
+            recipeOutputIndex: activeQueue?.currentIndex,
+            recipeTotalOutputs: activeQueue?.outputs.length,
+          }),
         };
         addBridgeRecord(address, record);
         window.dispatchEvent(new Event("bridge-history-updated"));
@@ -1174,36 +1210,41 @@ export function BridgeForm() {
                 </p>
                 {activeQueue && activeQueue.outputs.length > 1 ? (
                   <>
-                    {/* Progress dots */}
-                    <div className="flex items-center gap-1.5 mt-2">
-                      {activeQueue.outputs.map((_, idx) => {
-                        const isDone = activeQueue.completedIndices.includes(idx);
-                        const isSkipped = activeQueue.skippedIndices.includes(idx);
-                        const isCurrent = idx === activeQueue.currentIndex;
-                        return (
-                          <div
-                            key={idx}
-                            className={`h-1.5 flex-1 rounded-full transition-all ${
-                              isDone
-                                ? "bg-emerald-500"
-                                : isSkipped
-                                ? "bg-zinc-600"
-                                : isCurrent
-                                ? "bg-purple-400 animate-pulse"
-                                : "bg-zinc-700"
-                            }`}
-                            title={
-                              isDone
-                                ? `Output ${idx + 1} complete`
-                                : isSkipped
-                                ? `Output ${idx + 1} skipped`
-                                : isCurrent
-                                ? `Output ${idx + 1} (current)`
-                                : `Output ${idx + 1} pending`
-                            }
-                          />
-                        );
-                      })}
+                    {/* Progress dots — adaptive: shows max 8 on mobile, all on larger screens */}
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      {(() => {
+                        const all = activeQueue.outputs;
+                        // On mobile (< 640px would be ideal but we just cap visually)
+                        // we keep all dots but they wrap; here we just render all and let flex-wrap handle
+                        return all.map((_, idx) => {
+                          const isDone = activeQueue.completedIndices.includes(idx);
+                          const isSkipped = activeQueue.skippedIndices.includes(idx);
+                          const isCurrent = idx === activeQueue.currentIndex;
+                          return (
+                            <div
+                              key={idx}
+                              className={`h-1.5 min-w-[16px] flex-1 max-w-[60px] rounded-full transition-all ${
+                                isDone
+                                  ? "bg-emerald-500"
+                                  : isSkipped
+                                  ? "bg-zinc-600"
+                                  : isCurrent
+                                  ? "bg-purple-400 animate-pulse"
+                                  : "bg-zinc-700"
+                              }`}
+                              title={
+                                isDone
+                                  ? `Output ${idx + 1} complete`
+                                  : isSkipped
+                                  ? `Output ${idx + 1} skipped`
+                                  : isCurrent
+                                  ? `Output ${idx + 1} (current)`
+                                  : `Output ${idx + 1} pending`
+                              }
+                            />
+                          );
+                        });
+                      })()}
                     </div>
                     <p className="text-[11px] text-zinc-500 mt-2">
                       {activeQueue.completedIndices.length} of{" "}
