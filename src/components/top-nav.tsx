@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/bridge", label: "Bridge" },
   { href: "/recipes", label: "Recipes", beta: true },
+  { href: "/batch", label: "Batch", soon: true },
   { href: "/swap", label: "Swap", soon: true },
   { href: "/history", label: "History" },
 ];

@@ -124,7 +124,7 @@ function Hero3D() {
       <div className="relative z-10 text-center max-w-4xl px-6">
         <div className="ch-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-xs text-green-400 mb-8 backdrop-blur">
           <span className="w-[7px] h-[7px] rounded-full bg-green-500 ch-dot-pulse"></span>
-          Cross-VM bridge live · Recipes shipped · 22 EVM + Solana · Powered by CCTP V2
+          Cross-VM bridge live · Recipes shipped · Batch coming · 22 EVM + Solana · Powered by CCTP V2
         </div>
 
         <h1 className="ch-fade-up-delay-1 text-[clamp(48px,9vw,108px)] font-bold leading-[0.95] tracking-tight mb-6">
@@ -333,8 +333,22 @@ function RoadmapSection() {
           tone="progress"
           status="⚙ IN PROGRESS"
           num="04"
-          title="Multi-aggregator + swap"
+          title="Batch bridge — fan-out splitter"
           eta="Q3 2026 · in development"
+          features={[
+            "Custom LyxsaSplitter contract on 22 EVM chains",
+            "1 USDC source → up to 5 destinations atomically",
+            "Single approve + single signature batch tx",
+            "Multi-attestation parallel tracking",
+            "Native USDC (CCTP V2) — no wrapped tokens",
+          ]}
+        />
+        <PhaseCard
+          tone="future"
+          status="⏳ COMING SOON"
+          num="05"
+          title="Multi-aggregator + swap"
+          eta="Q4 2026 · planned"
           features={[
             "Across, Relay, LiFi quote comparison",
             "USDC ↔ USDT/ETH swap (1inch SDK)",
@@ -346,7 +360,7 @@ function RoadmapSection() {
         <PhaseCard
           tone="future"
           status="⏳ COMING SOON"
-          num="05"
+          num="06"
           title="Move VM expansion"
           eta="2027 · planned"
           features={[
