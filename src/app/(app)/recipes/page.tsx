@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * /recipes — Recipe list page (Stage 3 with full CRUD)
+ * /recipes — Recipe list page (Stage 6 polish)
  *
  * Stage 2: read-only list + templates
- * Stage 3 (current): + New button enabled, edit/delete wired, template "Use" wired
- * Stage 4 will add: Run actions wired, run modal
+ * Stage 3: + New button enabled, edit/delete wired, template "Use" wired
+ * Stage 4: Run actions wired for single-output recipes (URL prefill)
+ * Stage 5: Multi-output sequential queue + auto-advance
+ * Stage 6 (current): Resume banner + analytics card
  */
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
@@ -21,6 +23,8 @@ import {
   computeOutputAmount,
   saveRecipeQueue,
   clearRecipeQueue,
+  loadRecipeQueue,
+  isQueueComplete,
   type Recipe,
   type RecipeQueueState,
 } from "@/lib/recipes-storage";
@@ -48,6 +52,40 @@ export default function RecipesPage() {
     name: string;
   } | null>(null);
   const [runTarget, setRunTarget] = useState<Recipe | null>(null);
+  const [activeQueue, setActiveQueue] = useState<RecipeQueueState | null>(null);
+  const [cancelQueueOpen, setCancelQueueOpen] = useState(false);
+
+  // Detect active queue on mount + when address changes
+  useEffect(() => {
+    if (!address) {
+      setActiveQueue(null);
+      return;
+    }
+    const queue = loadRecipeQueue(address);
+    if (queue && !isQueueComplete(queue)) {
+      setActiveQueue(queue);
+    } else {
+      setActiveQueue(null);
+    }
+  }, [address, recipes]);
+
+  // Recipe analytics — compute aggregates for stats card
+  const analytics = useMemo(() => {
+    if (recipes.length === 0) return null;
+    const totalRuns = recipes.reduce((sum, r) => sum + (r.runCount || 0), 0);
+    const mostUsed = [...recipes]
+      .filter((r) => (r.runCount || 0) > 0)
+      .sort((a, b) => (b.runCount || 0) - (a.runCount || 0))[0];
+    const lastRunRecipe = [...recipes]
+      .filter((r) => r.lastRunAt)
+      .sort((a, b) => (b.lastRunAt || 0) - (a.lastRunAt || 0))[0];
+    return {
+      totalRecipes: recipes.length,
+      totalRuns,
+      mostUsed,
+      lastRunRecipe,
+    };
+  }, [recipes]);
 
   const handleEdit = (id: string) => {
     router.push(`/recipes/${id}/edit`);
@@ -117,6 +155,39 @@ export default function RecipesPage() {
     setRunTarget(null);
   };
 
+  // Resume active queue — redirect back to bridge with current output prefilled
+  const resumeQueue = () => {
+    if (!activeQueue) return;
+    const currentOutput = activeQueue.outputs[activeQueue.currentIndex];
+    if (!currentOutput) return;
+    const params = new URLSearchParams({
+      from: String(activeQueue.sourceChainId),
+      to: String(currentOutput.destChainId),
+      amount: currentOutput.amount,
+      recipeId: activeQueue.recipeId,
+      recipeName: activeQueue.recipeName,
+    });
+    router.push(`/bridge?${params.toString()}`);
+  };
+
+  // Cancel active queue — wipe localStorage + close modal
+  const confirmCancelQueue = () => {
+    if (!address) return;
+    clearRecipeQueue(address);
+    setActiveQueue(null);
+    setCancelQueueOpen(false);
+  };
+
+  // Format relative time for analytics
+  const formatRelativeTime = (timestamp: number): string => {
+    const diff = Date.now() - timestamp;
+    if (diff < 60000) return "just now";
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+    return `${Math.floor(diff / 604800000)}w ago`;
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
       {/* Header */}
@@ -132,7 +203,7 @@ export default function RecipesPage() {
           </div>
           <p className="text-sm text-zinc-400 max-w-xl">
             Save bridge configurations as reusable presets. Multi-output
-            execution arrives in Stage 5.
+            sequential queues with skip/cancel and refresh-safe resume.
           </p>
         </div>
 
@@ -143,6 +214,144 @@ export default function RecipesPage() {
           + New Recipe
         </Link>
       </div>
+
+      {/* Active queue resume banner — Stage 6 polish */}
+      {isConnected && activeQueue && (
+        <div className="mb-6 rounded-2xl border border-purple-500/30 bg-gradient-to-r from-purple-500/[0.08] to-cyan-500/[0.05] p-4 sm:p-5">
+          <div className="flex items-start gap-3 flex-wrap">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/15 flex items-center justify-center text-xl shrink-0">
+              🍳
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <p className="font-semibold text-zinc-100 text-sm">
+                  Active recipe queue
+                </p>
+                <span className="px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[10px] font-bold tracking-wider uppercase leading-none">
+                  In progress
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mb-2">
+                <span className="font-medium text-zinc-200">
+                  {activeQueue.recipeName}
+                </span>
+                {" · "}
+                {activeQueue.completedIndices.length} of{" "}
+                {activeQueue.outputs.length} outputs complete
+                {activeQueue.skippedIndices.length > 0 && (
+                  <>
+                    {" · "}
+                    <span className="text-zinc-500">
+                      {activeQueue.skippedIndices.length} skipped
+                    </span>
+                  </>
+                )}
+              </p>
+
+              {/* Progress dots */}
+              <div className="flex items-center gap-1 mb-3">
+                {activeQueue.outputs.map((_, idx) => {
+                  const isCompleted = activeQueue.completedIndices.includes(idx);
+                  const isSkipped = activeQueue.skippedIndices.includes(idx);
+                  const isCurrent = idx === activeQueue.currentIndex;
+                  return (
+                    <span
+                      key={idx}
+                      className={`h-2 w-2 rounded-full ${
+                        isCompleted
+                          ? "bg-emerald-500"
+                          : isSkipped
+                            ? "bg-zinc-600"
+                            : isCurrent
+                              ? "bg-purple-400 animate-pulse"
+                              : "bg-zinc-700"
+                      }`}
+                      aria-label={`Output ${idx + 1}: ${
+                        isCompleted
+                          ? "completed"
+                          : isSkipped
+                            ? "skipped"
+                            : isCurrent
+                              ? "current"
+                              : "pending"
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={resumeQueue}
+                  className="h-8 px-3 rounded-lg bg-gradient-to-r from-purple-500 to-cyan-500 text-white text-xs font-semibold hover:-translate-y-px hover:shadow-lg hover:shadow-purple-500/20 transition-all"
+                >
+                  ▶ Resume queue
+                </button>
+                <button
+                  onClick={() => setCancelQueueOpen(true)}
+                  className="h-8 px-3 rounded-lg border border-rose-500/30 bg-rose-500/[0.06] text-rose-300 text-xs font-medium hover:bg-rose-500/[0.12] transition-colors"
+                >
+                  ✕ Cancel queue
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics summary card — Stage 6 polish */}
+      {isConnected && analytics && analytics.totalRuns > 0 && (
+        <div className="mb-6 rounded-2xl border border-white/[0.06] bg-zinc-950/40 p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center text-xl shrink-0">
+              📊
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-zinc-300 mb-2 uppercase tracking-wider">
+                Your recipes
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+                <div>
+                  <div className="text-xl sm:text-2xl font-bold text-zinc-100 tabular-nums leading-none">
+                    {analytics.totalRecipes}
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-1">
+                    {analytics.totalRecipes === 1 ? "recipe saved" : "recipes saved"}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xl sm:text-2xl font-bold text-zinc-100 tabular-nums leading-none">
+                    {analytics.totalRuns}
+                  </div>
+                  <div className="text-[11px] text-zinc-500 mt-1">
+                    {analytics.totalRuns === 1 ? "total run" : "total runs"}
+                  </div>
+                </div>
+                {analytics.mostUsed && (
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-zinc-100 truncate">
+                      {analytics.mostUsed.name}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">
+                      most used · {analytics.mostUsed.runCount}×
+                    </div>
+                  </div>
+                )}
+                {analytics.lastRunRecipe?.lastRunAt && (
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-zinc-100 truncate">
+                      {formatRelativeTime(analytics.lastRunRecipe.lastRunAt)}
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5 truncate">
+                      last · {analytics.lastRunRecipe.name}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Wallet not connected */}
       {!isConnected && (
@@ -327,11 +536,11 @@ export default function RecipesPage() {
                 <li>✓ Stage 2 · List page</li>
                 <li>✓ Stage 3 · Create &amp; edit form</li>
                 <li>✓ Stage 4 · Single-output execution</li>
+                <li>✓ Stage 5 · Multi-output sequential queue</li>
                 <li>
-                  <span className="text-purple-300">▶ Stage 5</span> ·
-                  Multi-output sequential queue (you are here)
+                  <span className="text-purple-300">▶ Stage 6</span> · Polish
+                  &amp; resilience (you are here)
                 </li>
-                <li>· Stage 6 · Polish &amp; resilience</li>
               </ul>
             </div>
           </div>
@@ -461,6 +670,51 @@ export default function RecipesPage() {
                 className="h-10 px-5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold transition-colors"
               >
                 Delete Recipe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel queue confirm modal — Stage 6 polish */}
+      {cancelQueueOpen && activeQueue && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setCancelQueueOpen(false)}
+        >
+          <div
+            className="max-w-md w-full rounded-2xl border border-white/[0.08] bg-zinc-950 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-rose-500/10 flex items-center justify-center text-2xl">
+              ⚠
+            </div>
+            <h3 className="text-lg font-semibold text-zinc-100 text-center mb-2">
+              Cancel queue?
+            </h3>
+            <p className="text-sm text-zinc-400 text-center mb-1">
+              <span className="font-medium text-zinc-300">
+                &ldquo;{activeQueue.recipeName}&rdquo;
+              </span>{" "}
+              will stop executing.
+            </p>
+            <p className="text-sm text-zinc-500 text-center mb-6">
+              {activeQueue.completedIndices.length} of{" "}
+              {activeQueue.outputs.length} outputs already complete will stay
+              bridged. Remaining outputs will be skipped.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setCancelQueueOpen(false)}
+                className="h-10 px-5 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors"
+              >
+                Keep going
+              </button>
+              <button
+                onClick={confirmCancelQueue}
+                className="h-10 px-5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold transition-colors"
+              >
+                Cancel queue
               </button>
             </div>
           </div>
