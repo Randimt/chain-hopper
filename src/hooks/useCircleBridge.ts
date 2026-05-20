@@ -123,34 +123,36 @@ export interface UseCircleBridgeArgs {
 /**
  * Map our wagmi chainId to Circle's BridgeChain enum value.
  * Circle SDK uses underscore_separated names like "Ethereum_Sepolia".
+ *
+ * Chain IDs sourced directly from src/lib/wagmi.ts to avoid drift.
  */
 function chainIdToCircleName(chainId: number): string | null {
   // Solana synthetic id
   if (chainId === SOLANA_DEVNET_CHAIN_ID) return "Solana_Devnet";
 
   const map: Record<number, string> = {
-    11155111: "Ethereum_Sepolia",
-    84532: "Base_Sepolia",
-    421614: "Arbitrum_Sepolia",
-    11155420: "Optimism_Sepolia",
-    80002: "Polygon_Amoy_Testnet",
-    43113: "Avalanche_Fuji",
-    59141: "Linea_Sepolia",
-    1301: "Unichain_Sepolia",
-    4801: "World_Chain_Sepolia",
-    763373: "Ink_Testnet",
-    2810: "Morph_Testnet",
-    1924: "Plume_Testnet",
-    1328: "Sei_Testnet",
-    14601: "Sonic_Testnet",
-    98985: "Pharos_Testnet",
-    685685: "Codex_Testnet",
-    50_002: "XDC_Apothem",
-    10143: "Monad_Testnet",
-    1338: "Edge_Testnet",
-    944: "Arc_Testnet",
-    1075: "Injective_Testnet",
-    998: "HyperEVM_Testnet",
+    11155111: "Ethereum_Sepolia",      // sepolia
+    84532: "Base_Sepolia",              // baseSepolia
+    421614: "Arbitrum_Sepolia",         // arbitrumSepolia
+    11155420: "Optimism_Sepolia",       // optimismSepolia
+    80002: "Polygon_Amoy_Testnet",      // polygonAmoy
+    43113: "Avalanche_Fuji",            // avalancheFuji
+    1301: "Unichain_Sepolia",           // unichainSepolia
+    59141: "Linea_Sepolia",             // lineaSepolia
+    10143: "Monad_Testnet",             // monadTestnet
+    98867: "Plume_Testnet",             // plumeSepolia (Plume Testnet on Circle)
+    763373: "Ink_Testnet",              // inkSepolia (Ink Testnet on Circle)
+    4801: "World_Chain_Sepolia",        // worldchainSepolia
+    57054: "Sonic_Testnet",             // sonicBlazeTestnet (Sonic Testnet on Circle)
+    1328: "Sei_Testnet",                // seiTestnet
+    688688: "Pharos_Testnet",           // pharosTestnet
+    5042002: "Arc_Testnet",             // arcTestnet ← FIX
+    812242: "Codex_Testnet",            // codexTestnet
+    998: "HyperEVM_Testnet",            // hyperliquidEvmTestnet
+    1439: "Injective_Testnet",          // injectiveTestnet (Injective EVM Testnet)
+    51: "XDC_Apothem",                  // xdcTestnet
+    2910: "Morph_Testnet",              // morphHoodiTestnet
+    33431: "Edge_Testnet",              // edgeTestnet
   };
 
   return map[chainId] ?? null;
