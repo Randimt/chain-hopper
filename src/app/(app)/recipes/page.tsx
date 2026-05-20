@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * /recipes — Recipe list page (Stage 2 read-only)
+ * /recipes — Recipe list page (Stage 3 with full CRUD)
  *
- * Shows:
- *   - List of saved recipes for connected wallet
- *   - Empty state with template gallery + console hint
- *   - Wallet-not-connected gate
- *
- * Stage 3 will add: Create button, edit/run/delete actions wired.
- * Stage 4 will add: Run modal with execution flow.
+ * Stage 2: read-only list + templates
+ * Stage 3 (current): + New button enabled, edit/delete wired, template "Use" wired
+ * Stage 4 will add: Run actions wired, run modal
  */
 
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useRecipes } from "@/hooks/useRecipes";
@@ -33,9 +32,29 @@ function getChainInfo(chainId: number) {
 }
 
 export default function RecipesPage() {
+  const router = useRouter();
   const { isConnected } = useAccount();
   const { openConnectModal } = useConnectModal();
-  const { recipes, loading } = useRecipes();
+  const { recipes, loading, removeRecipe } = useRecipes();
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  const handleEdit = (id: string) => {
+    router.push(`/recipes/${id}/edit`);
+  };
+
+  const handleDeleteClick = (id: string) => {
+    const recipe = recipes.find((r) => r.id === id);
+    if (recipe) setDeleteTarget({ id, name: recipe.name });
+  };
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    removeRecipe(deleteTarget.id);
+    setDeleteTarget(null);
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
@@ -56,16 +75,12 @@ export default function RecipesPage() {
           </p>
         </div>
 
-        <button
-          disabled
-          className="h-10 px-5 rounded-lg bg-zinc-800/50 border border-white/[0.08] text-zinc-500 text-sm font-medium cursor-not-allowed"
-          title="Create UI ships in Stage 3"
+        <Link
+          href="/recipes/new"
+          className="h-10 px-5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-semibold flex items-center gap-2 hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
         >
           + New Recipe
-          <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 text-[9px] font-bold tracking-wider uppercase leading-none">
-            Soon
-          </span>
-        </button>
+        </Link>
       </div>
 
       {/* Wallet not connected */}
@@ -119,19 +134,17 @@ export default function RecipesPage() {
             <h3 className="text-lg font-semibold text-zinc-100 mb-2">
               No recipes yet
             </h3>
-            <p className="text-sm text-zinc-500 mb-2 max-w-lg mx-auto">
+            <p className="text-sm text-zinc-500 mb-6 max-w-lg mx-auto">
               A recipe saves a bridge configuration — source chain, total
               amount, and one or more destination outputs. Re-run anytime
               with a single click (coming Stage 4).
             </p>
-            <p className="text-xs text-zinc-600 max-w-lg mx-auto mb-6">
-              Stage 3 will add the create form. Until then, you can seed
-              recipes via the dev console (open DevTools console + try{" "}
-              <code className="px-1.5 py-0.5 rounded bg-white/[0.04] text-zinc-300 font-mono text-[11px]">
-                window.plix._recipes.seedDemo()
-              </code>
-              ).
-            </p>
+            <Link
+              href="/recipes/new"
+              className="inline-block h-10 leading-10 px-5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-semibold hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
+            >
+              Create Your First Recipe
+            </Link>
           </div>
 
           {/* Template gallery */}
@@ -142,8 +155,8 @@ export default function RecipesPage() {
                   Suggested Recipes
                 </h2>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Templates to inspire your first recipe (preview only — Stage
-                  3 lets you save these)
+                  Templates to start from. Click &ldquo;Use template&rdquo; to
+                  prefill the form.
                 </p>
               </div>
             </div>
@@ -154,7 +167,7 @@ export default function RecipesPage() {
                 return (
                   <div
                     key={template.id}
-                    className="rounded-2xl border border-white/[0.06] bg-zinc-950/40 p-5 hover:border-white/[0.12] transition-colors"
+                    className="rounded-2xl border border-white/[0.06] bg-zinc-950/40 p-5 hover:border-white/[0.12] transition-colors flex flex-col"
                   >
                     <div className="flex items-center justify-between mb-3">
                       <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[10px] font-bold tracking-wider uppercase leading-none">
@@ -178,7 +191,7 @@ export default function RecipesPage() {
                       <span>{template.totalAmountSuggestion} USDC</span>
                     </div>
 
-                    <div className="space-y-1.5 pt-2.5 border-t border-white/[0.04]">
+                    <div className="space-y-1.5 pt-2.5 border-t border-white/[0.04] flex-1">
                       {template.outputs.map((out, idx) => {
                         const info = getChainInfo(out.destChainId);
                         const amount = computeOutputAmount(
@@ -201,6 +214,13 @@ export default function RecipesPage() {
                         );
                       })}
                     </div>
+
+                    <Link
+                      href={`/recipes/new?template=${template.id}`}
+                      className="mt-4 h-9 leading-9 text-center rounded-lg border border-cyan-500/30 bg-cyan-500/[0.06] text-cyan-300 text-xs font-semibold hover:bg-cyan-500/[0.12] transition-colors"
+                    >
+                      Use template →
+                    </Link>
                   </div>
                 );
               })}
@@ -219,7 +239,12 @@ export default function RecipesPage() {
             <span>Newest first</span>
           </div>
           {recipes.map((recipe) => (
-            <RecipeCard key={recipe.id} recipe={recipe} />
+            <RecipeCard
+              key={recipe.id}
+              recipe={recipe}
+              onEdit={handleEdit}
+              onDelete={handleDeleteClick}
+            />
           ))}
         </div>
       )}
@@ -237,12 +262,10 @@ export default function RecipesPage() {
               </p>
               <ul className="text-[11px] text-zinc-500 space-y-0.5 leading-relaxed">
                 <li>✓ Stage 1 · Foundation (storage, validation, hook)</li>
+                <li>✓ Stage 2 · List page</li>
                 <li>
-                  <span className="text-purple-300">▶ Stage 2</span> · List
-                  page (you are here)
-                </li>
-                <li>
-                  · Stage 3 · Create &amp; edit form (next)
+                  <span className="text-purple-300">▶ Stage 3</span> ·
+                  Create &amp; edit form (you are here)
                 </li>
                 <li>· Stage 4 · Single-output execution</li>
                 <li>· Stage 5 · Multi-output parallel</li>
@@ -252,6 +275,46 @@ export default function RecipesPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete confirm modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="max-w-md w-full rounded-2xl border border-white/[0.08] bg-zinc-950 p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-rose-500/10 flex items-center justify-center text-2xl">
+              ⚠
+            </div>
+            <h3 className="text-lg font-semibold text-zinc-100 text-center mb-2">
+              Delete recipe?
+            </h3>
+            <p className="text-sm text-zinc-400 text-center mb-6">
+              <span className="font-medium text-zinc-300">
+                &ldquo;{deleteTarget.name}&rdquo;
+              </span>{" "}
+              will be removed. This cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="h-10 px-5 rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.04] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="h-10 px-5 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold transition-colors"
+              >
+                Delete Recipe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
