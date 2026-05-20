@@ -14,6 +14,7 @@ import { CHAIN_INFO, USDC_ADDRESSES, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi"
 import { isSolanaChain } from "@/lib/cctp";
 import { useBridge } from "@/hooks/useBridge";
 import { useCircleBridge } from "@/hooks/useCircleBridge";
+import { useSolanaUsdcBalance } from "@/hooks/useSolanaBalance";
 import { useRelayBridge } from "@/hooks/useRelayBridge";
 import { useAcrossBridge } from "@/hooks/useAcrossBridge";
 import { useSolanaReceive } from "@/hooks/useSolanaReceive";
@@ -688,6 +689,9 @@ export function BridgeForm() {
     setAmount("");
   };
 
+  const sourceIsSolana = isSolanaChain(sourceChain);
+  const solanaBalanceState = useSolanaUsdcBalance();
+
   const { data: balanceRaw } = useReadContract({
     address: USDC_ADDRESSES[sourceChain],
     abi: erc20Abi,
@@ -695,15 +699,18 @@ export function BridgeForm() {
     args: address ? [address] : undefined,
     chainId: sourceChain,
     query: {
-      enabled: isConnected && !!address,
+      enabled: isConnected && !!address && !sourceIsSolana,
       refetchInterval: 30_000,
     },
   });
 
   const balance = useMemo(() => {
+    if (sourceIsSolana) {
+      return parseFloat(solanaBalanceState.balance) || 0;
+    }
     if (!balanceRaw) return 0;
     return parseFloat(formatUnits(balanceRaw as bigint, 6));
-  }, [balanceRaw]);
+  }, [balanceRaw, sourceIsSolana, solanaBalanceState.balance]);
 
   const amountNum = parseFloat(amount) || 0;
   const hasAmount = amountNum > 0;
@@ -750,7 +757,14 @@ export function BridgeForm() {
   };
 
   const handleBridge = () => {
-    if (!selectedQuote || selectedQuote.status !== "available") return;
+    // Cross-VM bridges (one side Solana) → route through Circle Bridge Kit
+    // Bypass quote/provider selection — only CCTP supports cross-VM
+    const destIsSolana = isSolanaChain(destChain);
+    const sourceIsSolana = isSolanaChain(sourceChain);
+    const isCrossVm = destIsSolana || sourceIsSolana;
+
+    if (!isCrossVm && (!selectedQuote || selectedQuote.status !== "available"))
+      return;
 
     // Read recipient from settings (validated in drawer)
     const settings =
@@ -763,24 +777,40 @@ export function BridgeForm() {
         ? (customRecipient as `0x${string}`)
         : undefined;
 
-    // Solana destination requires Phantom connected
-    const destIsSolana = isSolanaChain(destChain);
-    if (destIsSolana) {
-      if (selectedProvider !== "cctp") {
-        toast.error("Solana bridges require CCTP route");
+    if (isCrossVm) {
+      if (!hasAmount) {
+        toast.error("Enter an amount to bridge");
+        return;
+      }
+      if (!sufficientBalance) {
+        toast.error("Insufficient USDC balance");
         return;
       }
       if (!solanaConnected || !solanaPublicKey) {
-        toast.error("Connect Phantom wallet first to bridge to Solana");
+        toast.error(
+          sourceIsSolana
+            ? "Connect Solana wallet (Phantom/Backpack) first to bridge from Solana"
+            : "Connect Solana wallet (Phantom/Backpack) first to bridge to Solana"
+        );
+        return;
+      }
+      if (sourceIsSolana && !address) {
+        toast.error("Connect EVM wallet (MetaMask) first to receive on EVM");
         return;
       }
 
-      // EVM → Solana: route through Circle's official Bridge Kit
-      // (drops the homegrown receiveMessage path entirely)
+      // Recipient address depends on direction:
+      //   EVM → Solana: recipient = Solana wallet
+      //   Solana → EVM: recipient = EVM wallet (or custom EVM addr from settings)
+      const finalRecipient = destIsSolana
+        ? solanaPublicKey.toBase58()
+        : (recipient ?? address);
+
       void circleBridge.bridge({
         sourceChainId: sourceChain,
+        destChainId: destChain,
         amount,
-        recipientAddress: solanaPublicKey.toBase58(),
+        recipientAddress: finalRecipient,
       });
       return;
     }
@@ -852,25 +882,37 @@ export function BridgeForm() {
     setUserPickedProvider(false);
   };
 
+  // Cross-VM detection
+  const isCrossVm = isSolanaChain(sourceChain) || isSolanaChain(destChain);
+
   // CCTP needs separate Approve step — Relay/Across bundle approve into intent flow
-  const showApproveButton = selectedProvider === "cctp";
+  // Cross-VM (Solana side) skips Approve entirely (BridgeKit handles internally)
+  const showApproveButton = !isCrossVm && selectedProvider === "cctp";
   const canApprove =
+    !isCrossVm &&
     selectedProvider === "cctp" &&
     isConnected &&
     hasAmount &&
     sufficientBalance &&
     (state.status === "idle" || state.status === "error");
-  const canBridge =
-    selectedQuote?.status === "available" &&
-    hasAmount &&
-    sufficientBalance &&
-    !isProcessing &&
-    !isComplete &&
-    (selectedProvider === "relay" ||
-      selectedProvider === "across" ||
-      isApproved); // CCTP requires pre-approve, Relay/Across don't
+  const canBridge = isCrossVm
+    ? // Cross-VM: bypass quote/provider selection, route via BridgeKit directly
+      hasAmount &&
+      sufficientBalance &&
+      !isProcessing &&
+      !isComplete &&
+      solanaConnected &&
+      (isSolanaChain(destChain) ? true : !!address)
+    : selectedQuote?.status === "available" &&
+      hasAmount &&
+      sufficientBalance &&
+      !isProcessing &&
+      !isComplete &&
+      (selectedProvider === "relay" ||
+        selectedProvider === "across" ||
+        isApproved); // CCTP requires pre-approve, Relay/Across don't
 
-  if (!isConnected) {
+  if (!isConnected && !solanaConnected) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-8 text-center">
         <p className="text-zinc-400">Connect your wallet to start bridging</p>
@@ -1001,6 +1043,7 @@ export function BridgeForm() {
             value={sourceChain}
             onChange={handleSourceChange}
             label="From"
+            allowSolana
           />
           <div className="flex justify-between text-xs text-zinc-500 px-1">
             <span>Balance</span>
@@ -1075,8 +1118,8 @@ export function BridgeForm() {
           )}
         </div>
 
-        {/* Quote List — provider comparison */}
-        {hasAmount && sufficientBalance && (
+        {/* Quote List — provider comparison (EVM ↔ EVM only; cross-VM uses CCTP fixed) */}
+        {hasAmount && sufficientBalance && !isCrossVm && (
           <QuoteList
             quotes={quotes}
             bestByReceive={bestByReceive}
@@ -1086,6 +1129,20 @@ export function BridgeForm() {
             isLoading={quotesLoading}
             disabled={isProcessing}
           />
+        )}
+
+        {/* Cross-VM info card — shown when one side is Solana */}
+        {hasAmount && sufficientBalance && isCrossVm && (
+          <div className="rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 space-y-1">
+            <p className="text-xs font-medium text-purple-200">
+              Cross-VM bridge via Circle CCTP V2
+            </p>
+            <p className="text-[11px] text-purple-300/80 leading-relaxed">
+              {isSolanaChain(sourceChain)
+                ? "Sign in your Solana wallet, then in MetaMask to receive on EVM. ~30s end-to-end."
+                : "Sign in MetaMask, then your Solana wallet. ~30s end-to-end."}
+            </p>
+          </div>
         )}
 
         {/* CCTP status messages */}
@@ -1216,33 +1273,39 @@ export function BridgeForm() {
                   disabled={!canBridge}
                   className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed text-white font-medium py-3 px-4 text-sm transition-colors"
                 >
-                  {cctpProcessing
-                    ? state.status === "burning"
-                      ? "Burning..."
-                      : state.status === "attesting"
-                        ? "Waiting for attestation..."
-                        : state.status === "minting"
-                          ? "Minting..."
-                          : "Approving..."
-                    : relayProcessing
-                      ? relayState.status === "approving"
-                        ? "Approving..."
-                        : relayState.status === "depositing"
-                          ? "Depositing..."
-                          : "Filling..."
-                      : acrossProcessing
-                        ? acrossState.status === "approving"
+                  {circleProcessing
+                    ? circleBridge.status === "preparing"
+                      ? "Preparing cross-VM bridge..."
+                      : "Bridging cross-VM..."
+                    : cctpProcessing
+                      ? state.status === "burning"
+                        ? "Burning..."
+                        : state.status === "attesting"
+                          ? "Waiting for attestation..."
+                          : state.status === "minting"
+                            ? "Minting..."
+                            : "Approving..."
+                      : relayProcessing
+                        ? relayState.status === "approving"
                           ? "Approving..."
-                          : acrossState.status === "depositing"
+                          : relayState.status === "depositing"
                             ? "Depositing..."
                             : "Filling..."
-                        : selectedProvider === "relay"
-                          ? `Bridge via Relay → ${destInfo.name}`
-                          : selectedProvider === "across"
-                            ? `Bridge via Across → ${destInfo.name}`
-                            : selectedProvider === "cctp"
-                              ? `Bridge via CCTP → ${destInfo.name}`
-                              : "Select a route"}
+                        : acrossProcessing
+                          ? acrossState.status === "approving"
+                            ? "Approving..."
+                            : acrossState.status === "depositing"
+                              ? "Depositing..."
+                              : "Filling..."
+                          : isCrossVm
+                            ? `Bridge via CCTP → ${destInfo.name}`
+                            : selectedProvider === "relay"
+                              ? `Bridge via Relay → ${destInfo.name}`
+                              : selectedProvider === "across"
+                                ? `Bridge via Across → ${destInfo.name}`
+                                : selectedProvider === "cctp"
+                                  ? `Bridge via CCTP → ${destInfo.name}`
+                                  : "Select a route"}
                 </button>
               </>
             )

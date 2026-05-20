@@ -1,7 +1,11 @@
 "use client";
 
 /**
- * Hook for EVM → Solana bridging via Circle's official Bridge Kit.
+ * Hook for cross-VM USDC bridging via Circle's official Bridge Kit.
+ *
+ * Supports BOTH directions:
+ *   - EVM → Solana  (sourceChainId = EVM, destChainId = Solana_Devnet)
+ *   - Solana → EVM  (sourceChainId = Solana_Devnet, destChainId = EVM)
  *
  * Why this hook exists:
  *   The homegrown CCTP V2 Solana implementation (useBridge + useSolanaReceive)
@@ -10,19 +14,24 @@
  *   preflight stripping). Circle ships @circle-fin/bridge-kit as the official
  *   SDK that handles all of that internally.
  *
- *   We use BridgeKit ONLY for EVM → Solana. EVM → EVM keeps the existing
+ *   We use BridgeKit ONLY when one side is Solana. EVM ↔ EVM keeps the existing
  *   useBridge flow because it's already working, supports multi-aggregator
  *   (Relay, Across), and the homegrown EVM CCTP V2 path is well-tested.
  *
- * Flow:
+ * Flow (EVM → Solana):
  *   1. User picks source EVM chain + dest Solana Devnet + amount
  *   2. We grab MetaMask EIP1193 provider via wagmi connector
  *   3. We grab Phantom/Backpack/etc Solana provider via wallet-adapter
  *   4. Build viem adapter + Solana adapter + BridgeKit instance
- *   5. Call kit.bridge({ from, to, amount, config: { transferSpeed: 'FAST' } })
- *   6. SDK handles: depositForBurn → attestation poll → Solana receiveMessage
- *      Each step prompts the appropriate wallet (MetaMask then Phantom).
- *   7. Return BridgeResult with full step history for UI display.
+ *   5. Call kit.bridge({ from: evm, to: solana, amount })
+ *   6. SDK: depositForBurn (MetaMask) → attestation poll → receiveMessage (Phantom)
+ *
+ * Flow (Solana → EVM):
+ *   1. User picks Solana Devnet source + dest EVM chain + amount
+ *   2. Same adapter setup, but swap from/to
+ *   3. Call kit.bridge({ from: solana, to: evm, amount })
+ *   4. SDK: depositForBurn (Phantom) → attestation poll → receiveMessage (MetaMask)
+ *   5. Recipient defaults to MetaMask address
  */
 
 import { useCallback, useState, useMemo } from "react";
@@ -39,10 +48,6 @@ import { SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
 /**
  * Wrap @solana/wallet-adapter-react state into the shape Circle SDK expects:
  *   { isConnected, publicKey, connect(), disconnect(), signTransaction(), signMessage() }
- *
- * The wallet-adapter `wallet.adapter` object exposes similar methods but with a
- * slightly different shape (no isConnected getter, publicKey is a getter).
- * Circle's SolanaAdapter validates `provider.isConnected` as a required field.
  */
 function buildSolanaProvider(wallet: WalletContextState) {
   return {
@@ -115,56 +120,57 @@ export interface CircleBridgeState {
 
 export interface UseCircleBridgeArgs {
   sourceChainId: number;
+  destChainId: number;
   amount: string; // human-readable USDC amount (e.g. "0.1")
-  /** Solana wallet pubkey to receive USDC. Defaults to connected Phantom address. */
+  /** Recipient address on dest chain. Defaults to connected wallet on that side. */
   recipientAddress?: string;
 }
 
 /**
  * Map our wagmi chainId to Circle's BridgeChain enum value.
  * Circle SDK uses underscore_separated names like "Ethereum_Sepolia".
- *
- * Chain IDs sourced directly from src/lib/wagmi.ts to avoid drift.
  */
 function chainIdToCircleName(chainId: number): string | null {
-  // Solana synthetic id
   if (chainId === SOLANA_DEVNET_CHAIN_ID) return "Solana_Devnet";
 
   const map: Record<number, string> = {
-    11155111: "Ethereum_Sepolia",      // sepolia
-    84532: "Base_Sepolia",              // baseSepolia
-    421614: "Arbitrum_Sepolia",         // arbitrumSepolia
-    11155420: "Optimism_Sepolia",       // optimismSepolia
-    80002: "Polygon_Amoy_Testnet",      // polygonAmoy
-    43113: "Avalanche_Fuji",            // avalancheFuji
-    1301: "Unichain_Sepolia",           // unichainSepolia
-    59141: "Linea_Sepolia",             // lineaSepolia
-    10143: "Monad_Testnet",             // monadTestnet
-    98867: "Plume_Testnet",             // plumeSepolia (Plume Testnet on Circle)
-    763373: "Ink_Testnet",              // inkSepolia (Ink Testnet on Circle)
-    4801: "World_Chain_Sepolia",        // worldchainSepolia
-    57054: "Sonic_Testnet",             // sonicBlazeTestnet (Sonic Testnet on Circle)
-    1328: "Sei_Testnet",                // seiTestnet
-    688688: "Pharos_Testnet",           // pharosTestnet
-    5042002: "Arc_Testnet",             // arcTestnet ← FIX
-    812242: "Codex_Testnet",            // codexTestnet
-    998: "HyperEVM_Testnet",            // hyperliquidEvmTestnet
-    1439: "Injective_Testnet",          // injectiveTestnet (Injective EVM Testnet)
-    51: "XDC_Apothem",                  // xdcTestnet
-    2910: "Morph_Testnet",              // morphHoodiTestnet
-    33431: "Edge_Testnet",              // edgeTestnet
+    11155111: "Ethereum_Sepolia",
+    84532: "Base_Sepolia",
+    421614: "Arbitrum_Sepolia",
+    11155420: "Optimism_Sepolia",
+    80002: "Polygon_Amoy_Testnet",
+    43113: "Avalanche_Fuji",
+    1301: "Unichain_Sepolia",
+    59141: "Linea_Sepolia",
+    10143: "Monad_Testnet",
+    98867: "Plume_Testnet",
+    763373: "Ink_Testnet",
+    4801: "World_Chain_Sepolia",
+    57054: "Sonic_Testnet",
+    1328: "Sei_Testnet",
+    688688: "Pharos_Testnet",
+    5042002: "Arc_Testnet",
+    812242: "Codex_Testnet",
+    998: "HyperEVM_Testnet",
+    1439: "Injective_Testnet",
+    51: "XDC_Apothem",
+    2910: "Morph_Testnet",
+    33431: "Edge_Testnet",
   };
 
   return map[chainId] ?? null;
 }
 
+function isSolana(chainId: number) {
+  return chainId === SOLANA_DEVNET_CHAIN_ID;
+}
+
 export function useCircleBridge() {
-  const { connector } = useAccount();
+  const { connector, address: evmAddress } = useAccount();
   const { connection: solanaConnection } = useConnection();
   const wallet = useWallet();
   const { wallet: solanaWallet, publicKey: solanaPublicKey } = wallet;
 
-  // Memoize the wrapper so it's stable across renders (Circle SDK may keep refs)
   const solanaProvider = useMemo(
     () => buildSolanaProvider(wallet),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,13 +187,19 @@ export function useCircleBridge() {
   }, []);
 
   const bridge = useCallback(
-    async ({ sourceChainId, amount, recipientAddress }: UseCircleBridgeArgs) => {
+    async ({ sourceChainId, destChainId, amount, recipientAddress }: UseCircleBridgeArgs) => {
       try {
         setState({ status: "preparing", steps: [] });
 
-        // Validate prerequisites
+        const sourceIsSolana = isSolana(sourceChainId);
+        const destIsSolana = isSolana(destChainId);
+
+        // Validate prerequisites — both wallets needed for cross-VM
         if (!connector) {
-          throw new Error("EVM wallet not connected");
+          throw new Error("EVM wallet not connected (MetaMask/Rabby)");
+        }
+        if (!evmAddress) {
+          throw new Error("EVM wallet has no address — try reconnecting");
         }
         if (!solanaWallet?.adapter) {
           throw new Error("Connect a Solana wallet (Phantom/Backpack/Solflare) first");
@@ -197,12 +209,21 @@ export function useCircleBridge() {
         }
 
         const sourceCircleName = chainIdToCircleName(sourceChainId);
+        const destCircleName = chainIdToCircleName(destChainId);
         if (!sourceCircleName) {
           throw new Error(`Source chain ${sourceChainId} not supported by Circle SDK`);
         }
+        if (!destCircleName) {
+          throw new Error(`Destination chain ${destChainId} not supported by Circle SDK`);
+        }
+        if (sourceIsSolana && destIsSolana) {
+          throw new Error("Solana → Solana is not supported");
+        }
+        if (!sourceIsSolana && !destIsSolana) {
+          throw new Error("Use the EVM bridge flow for EVM → EVM transfers");
+        }
 
-        // Lazy-load SDK — keeps initial bundle smaller for non-Solana flows
-        // SolanaDevnet chain definition is exported from bridge-kit, NOT adapter-solana
+        // Lazy-load SDK
         const [
           { BridgeKit, SolanaDevnet },
           { createViemAdapterFromProvider },
@@ -220,19 +241,14 @@ export function useCircleBridge() {
           );
         }
 
-        // Get EIP1193 provider from wagmi connector (MetaMask, Rabby, etc.)
+        // Build EVM adapter
         const eip1193Provider = await connector.getProvider();
-
         const evmAdapter = await createViemAdapterFromProvider({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provider: eip1193Provider as any,
         });
 
-        // Solana adapter expects a SolanaWalletProvider-shaped object
-        // (with isConnected, publicKey, connect, disconnect, signTransaction).
-        // Our wrapper adapts wallet-adapter-react state to that shape.
-        // IMPORTANT: createSolanaAdapterFromProvider IS ASYNC — must await.
-        // Override default chain (mainnet) to Devnet via capabilities.
+        // Build Solana adapter (must await — it's async)
         const solanaAdapter = await createSolanaAdapterFromProvider({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           provider: solanaProvider as any,
@@ -248,24 +264,37 @@ export function useCircleBridge() {
 
         setState({ status: "bridging", steps: [] });
 
+        // Build from/to based on direction
+        const fromAdapter = sourceIsSolana ? solanaAdapter : evmAdapter;
+        const toAdapter = destIsSolana ? solanaAdapter : evmAdapter;
+
+        // Default recipient based on direction
+        const defaultRecipient = destIsSolana
+          ? solanaPublicKey.toBase58()
+          : evmAddress;
+        const finalRecipient = recipientAddress ?? defaultRecipient;
+
         const result = await kit.bridge({
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          from: { adapter: evmAdapter as any, chain: sourceCircleName as any },
+          from: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            adapter: fromAdapter as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            chain: sourceCircleName as any,
+          },
           to: {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            adapter: solanaAdapter as any,
+            adapter: toAdapter as any,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            chain: "Solana_Devnet" as any,
-            ...(recipientAddress && recipientAddress !== solanaPublicKey.toBase58()
-              ? { recipientAddress }
+            chain: destCircleName as any,
+            ...(finalRecipient && finalRecipient !== defaultRecipient
+              ? { recipientAddress: finalRecipient }
               : {}),
           },
           amount,
           config: { transferSpeed: "FAST" },
         });
 
-        // Map SDK steps to our UI shape
-        const steps: CircleBridgeStep[] = (result.steps ?? []).map((s) => ({
+        const steps: CircleBridgeStep[] = (result.steps ?? []).map((s: { name: string; state: string }) => ({
           name: s.name,
           state: s.state as "pending" | "success" | "error",
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -288,7 +317,6 @@ export function useCircleBridge() {
               "Bridge failed during execution — check step details",
           });
         } else {
-          // pending / unknown
           setState({ status: "bridging", steps });
         }
 
@@ -304,7 +332,7 @@ export function useCircleBridge() {
         throw e;
       }
     },
-    [connector, solanaConnection, solanaWallet, solanaPublicKey, solanaProvider]
+    [connector, evmAddress, solanaConnection, solanaWallet, solanaPublicKey, solanaProvider]
   );
 
   return {
