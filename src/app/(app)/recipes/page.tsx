@@ -19,7 +19,10 @@ import { CHAIN_INFO } from "@/lib/wagmi";
 import {
   RECIPE_TEMPLATES,
   computeOutputAmount,
+  saveRecipeQueue,
+  clearRecipeQueue,
   type Recipe,
+  type RecipeQueueState,
 } from "@/lib/recipes-storage";
 
 const SOLANA_DEVNET_ID = 999999001;
@@ -37,7 +40,7 @@ function getChainInfo(chainId: number) {
 
 export default function RecipesPage() {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { openConnectModal } = useConnectModal();
   const { recipes, loading, removeRecipe } = useRecipes();
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -74,23 +77,44 @@ export default function RecipesPage() {
     return `/bridge?${params.toString()}`;
   };
 
+  const startQueue = (recipe: Recipe) => {
+    if (!address) return;
+    // Clear any stale queue first
+    clearRecipeQueue(address);
+    const queue: RecipeQueueState = {
+      recipeId: recipe.id,
+      recipeName: recipe.name,
+      sourceChainId: recipe.sourceChainId,
+      outputs: recipe.outputs.map((o) => ({
+        destChainId: o.destChainId,
+        amount: computeOutputAmount(recipe.totalAmount, o.percentage),
+        percentage: o.percentage,
+      })),
+      currentIndex: 0,
+      completedIndices: [],
+      skippedIndices: [],
+      startedAt: Date.now(),
+    };
+    saveRecipeQueue(address, queue);
+    router.push(buildBridgeUrl(recipe, 0));
+  };
+
   const handleRun = (id: string) => {
     const recipe = recipes.find((r) => r.id === id);
     if (!recipe) return;
     if (recipe.outputs.length === 1) {
-      // Single output — direct redirect
+      // Single output — direct redirect, no queue needed
       router.push(buildBridgeUrl(recipe, 0));
     } else {
-      // Multi-output — show modal warning Stage 5 not ready, offer first output run
+      // Multi-output — show modal explaining sequential queue flow
       setRunTarget(recipe);
     }
   };
 
   const confirmMultiRun = () => {
     if (!runTarget) return;
-    const url = buildBridgeUrl(runTarget, 0);
+    startQueue(runTarget);
     setRunTarget(null);
-    router.push(url);
   };
 
   return (
@@ -302,11 +326,11 @@ export default function RecipesPage() {
                 <li>✓ Stage 1 · Foundation (storage, validation, hook)</li>
                 <li>✓ Stage 2 · List page</li>
                 <li>✓ Stage 3 · Create &amp; edit form</li>
+                <li>✓ Stage 4 · Single-output execution</li>
                 <li>
-                  <span className="text-purple-300">▶ Stage 4</span> ·
-                  Single-output execution (you are here)
+                  <span className="text-purple-300">▶ Stage 5</span> ·
+                  Multi-output sequential queue (you are here)
                 </li>
-                <li>· Stage 5 · Multi-output parallel</li>
                 <li>· Stage 6 · Polish &amp; resilience</li>
               </ul>
             </div>
@@ -314,7 +338,7 @@ export default function RecipesPage() {
         </div>
       </div>
 
-      {/* Multi-output run warning modal (Stage 5 not ready) */}
+      {/* Multi-output run modal — Stage 5 sequential queue flow */}
       {runTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
@@ -324,11 +348,11 @@ export default function RecipesPage() {
             className="max-w-md w-full rounded-2xl border border-white/[0.08] bg-zinc-950 p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-amber-500/10 flex items-center justify-center text-2xl">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-purple-500/10 flex items-center justify-center text-2xl">
               🍳
             </div>
             <h3 className="text-lg font-semibold text-zinc-100 text-center mb-2">
-              Multi-output recipe
+              Run multi-output recipe
             </h3>
             <p className="text-sm text-zinc-400 text-center mb-1">
               <span className="font-medium text-zinc-300">
@@ -341,38 +365,48 @@ export default function RecipesPage() {
               .
             </p>
             <p className="text-sm text-zinc-500 text-center mb-5">
-              Stage 4 runs the{" "}
-              <span className="font-medium text-zinc-300">first output</span>{" "}
-              only. Parallel multi-output execution arrives in Stage 5.
+              Outputs run{" "}
+              <span className="font-medium text-zinc-300">sequentially</span>.
+              You&apos;ll bridge each one in turn — sign in your wallet, wait
+              for confirmation, then advance to the next.
             </p>
 
             <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-3 mb-5">
               <p className="text-[11px] text-zinc-500 mb-2 uppercase tracking-wider font-semibold">
-                Will execute
+                Execution order
               </p>
-              {runTarget.outputs[0] && (() => {
-                const firstOut = runTarget.outputs[0];
-                const firstAmount = computeOutputAmount(
-                  runTarget.totalAmount,
-                  firstOut.percentage
-                );
-                const sourceInfo = getChainInfo(runTarget.sourceChainId);
-                const destInfo = getChainInfo(firstOut.destChainId);
-                return (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="flex items-center gap-1.5 text-zinc-300">
-                      <span>{sourceInfo?.logo ?? "🌐"}</span>
-                      <span>{sourceInfo?.name}</span>
-                      <span className="text-zinc-600">→</span>
-                      <span>{destInfo?.logo ?? "🌐"}</span>
-                      <span>{destInfo?.name}</span>
-                    </span>
-                    <span className="font-mono text-zinc-200">
-                      {firstAmount} USDC
-                    </span>
-                  </div>
-                );
-              })()}
+              <div className="space-y-1.5">
+                {runTarget.outputs.map((output, idx) => {
+                  const amount = computeOutputAmount(
+                    runTarget.totalAmount,
+                    output.percentage
+                  );
+                  const sourceInfo = getChainInfo(runTarget.sourceChainId);
+                  const destInfo = getChainInfo(output.destChainId);
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-xs"
+                    >
+                      <span className="flex items-center gap-1.5 text-zinc-300">
+                        <span className="text-zinc-600 font-mono w-5">
+                          {idx + 1}.
+                        </span>
+                        <span>{sourceInfo?.logo ?? "🌐"}</span>
+                        <span className="text-zinc-500">
+                          {sourceInfo?.name}
+                        </span>
+                        <span className="text-zinc-600">→</span>
+                        <span>{destInfo?.logo ?? "🌐"}</span>
+                        <span>{destInfo?.name}</span>
+                      </span>
+                      <span className="font-mono text-zinc-200">
+                        {amount} USDC
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-3">
@@ -386,7 +420,7 @@ export default function RecipesPage() {
                 onClick={confirmMultiRun}
                 className="h-10 px-5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-semibold hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all"
               >
-                Run First Output
+                Start Queue
               </button>
             </div>
           </div>

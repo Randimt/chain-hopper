@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { erc20Abi, formatUnits } from "viem";
 import { sepolia, baseSepolia } from "wagmi/chains";
 import toast from "react-hot-toast";
@@ -23,6 +23,13 @@ import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
 import { addBridgeRecord, generateBridgeId, type BridgeRecord } from "@/lib/bridge-history";
 import { useRecipes } from "@/hooks/useRecipes";
+import {
+  loadRecipeQueue,
+  advanceRecipeQueue,
+  clearRecipeQueue,
+  isQueueComplete,
+  type RecipeQueueState,
+} from "@/lib/recipes-storage";
 
 const STORAGE_KEY = "chain-hopper:pending-bridge";
 
@@ -97,12 +104,14 @@ function TxLink({
 export function BridgeForm() {
   const { address, isConnected } = useAccount();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { markRun } = useRecipes();
   const [sourceChain, setSourceChain] = useState<number>(sepolia.id);
   const [destChain, setDestChain] = useState<number>(baseSepolia.id);
   const [amount, setAmount] = useState<string>("");
   const [activeRecipeId, setActiveRecipeId] = useState<string | null>(null);
   const [activeRecipeName, setActiveRecipeName] = useState<string | null>(null);
+  const [activeQueue, setActiveQueue] = useState<RecipeQueueState | null>(null);
   const recipeRunMarkedRef = useRef(false);
   const [pendingBridge, setPendingBridge] = useState<PendingBridge | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<QuoteProvider | null>(null);
@@ -222,8 +231,62 @@ export function BridgeForm() {
       setActiveRecipeId(recipeId);
       setActiveRecipeName(recipeName || "Recipe");
       recipeRunMarkedRef.current = false; // reset on new recipe load
+    } else {
+      setActiveRecipeId(null);
+      setActiveRecipeName(null);
+      setActiveQueue(null);
     }
   }, [searchParams]);
+
+  // Load active queue from localStorage when recipe context active
+  useEffect(() => {
+    if (!address || !activeRecipeId) {
+      setActiveQueue(null);
+      return;
+    }
+    const queue = loadRecipeQueue(address);
+    // Only show queue UI if it matches the current recipe
+    if (queue && queue.recipeId === activeRecipeId) {
+      setActiveQueue(queue);
+    } else {
+      setActiveQueue(null);
+    }
+  }, [address, activeRecipeId]);
+
+  // Advance queue helper — called after bridge complete
+  const advanceQueueAndRedirect = useCallback(() => {
+    if (!address || !activeQueue) return;
+    const updated = advanceRecipeQueue(address, "completed");
+    if (!updated || isQueueComplete(updated)) {
+      // Queue done — clear and toast
+      if (address) clearRecipeQueue(address);
+      toast.success(
+        `🎉 Recipe complete · ${activeQueue.outputs.length}/${activeQueue.outputs.length} outputs`,
+        { duration: 6000, id: "recipe-queue-done" }
+      );
+      // Strip URL params, stay on bridge page
+      setTimeout(() => {
+        router.replace("/bridge");
+      }, 1500);
+      return;
+    }
+    // More outputs — redirect to next
+    const nextOutput = updated.outputs[updated.currentIndex];
+    const params = new URLSearchParams({
+      from: String(updated.sourceChainId),
+      to: String(nextOutput.destChainId),
+      amount: nextOutput.amount,
+      recipeId: updated.recipeId,
+      recipeName: updated.recipeName,
+    });
+    toast.success(
+      `✓ Output ${updated.currentIndex} of ${updated.outputs.length} done · advancing…`,
+      { duration: 3000, id: "recipe-queue-advance" }
+    );
+    setTimeout(() => {
+      router.push(`/bridge?${params.toString()}`);
+    }, 1500);
+  }, [address, activeQueue, router]);
 
   const handleSelectProvider = (provider: QuoteProvider) => {
     setSelectedProvider(provider);
@@ -416,6 +479,8 @@ export function BridgeForm() {
           recipeRunMarkedRef.current = true;
         }
         if (address) clearPendingBridge(address);
+        // Advance queue if multi-output recipe in progress
+        if (activeQueue) advanceQueueAndRedirect();
       }
       if (curr === "error") {
         toast.error(circleBridge.error ?? "Bridge failed", { id: "circle-bridge" });
@@ -456,6 +521,8 @@ export function BridgeForm() {
         markRun(activeRecipeId);
         recipeRunMarkedRef.current = true;
       }
+      // Advance queue if multi-output recipe in progress
+      if (activeQueue) advanceQueueAndRedirect();
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -558,6 +625,8 @@ export function BridgeForm() {
         markRun(activeRecipeId);
         recipeRunMarkedRef.current = true;
       }
+      // Advance queue if multi-output recipe in progress
+      if (activeQueue) advanceQueueAndRedirect();
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -660,6 +729,8 @@ export function BridgeForm() {
         markRun(activeRecipeId);
         recipeRunMarkedRef.current = true;
       }
+      // Advance queue if multi-output recipe in progress
+      if (activeQueue) advanceQueueAndRedirect();
       if (address && recordIdRef.current) {
         const meta = recordMetaRef.current ?? {
           sourceChain,
@@ -1072,42 +1143,138 @@ export function BridgeForm() {
                 🍳
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-0.5">
+                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
                     Running recipe
                   </span>
                   <span className="text-[10px] text-zinc-500">·</span>
-                  <span className="text-[10px] text-zinc-500">
-                    Output 1 of 1 (single-output mode)
+                  <span className="text-[10px] text-zinc-400">
+                    {activeQueue
+                      ? `Output ${activeQueue.currentIndex + 1} of ${activeQueue.outputs.length}`
+                      : "Single-output mode"}
                   </span>
                 </div>
                 <p className="text-sm font-semibold text-zinc-100 truncate">
                   {activeRecipeName}
                 </p>
-                <p className="text-[11px] text-zinc-500 mt-0.5">
-                  Form prefilled from recipe. Modify if needed, then proceed
-                  with the bridge.
-                </p>
+                {activeQueue && activeQueue.outputs.length > 1 ? (
+                  <>
+                    {/* Progress dots */}
+                    <div className="flex items-center gap-1.5 mt-2">
+                      {activeQueue.outputs.map((_, idx) => {
+                        const isDone = activeQueue.completedIndices.includes(idx);
+                        const isSkipped = activeQueue.skippedIndices.includes(idx);
+                        const isCurrent = idx === activeQueue.currentIndex;
+                        return (
+                          <div
+                            key={idx}
+                            className={`h-1.5 flex-1 rounded-full transition-all ${
+                              isDone
+                                ? "bg-emerald-500"
+                                : isSkipped
+                                ? "bg-zinc-600"
+                                : isCurrent
+                                ? "bg-purple-400 animate-pulse"
+                                : "bg-zinc-700"
+                            }`}
+                            title={
+                              isDone
+                                ? `Output ${idx + 1} complete`
+                                : isSkipped
+                                ? `Output ${idx + 1} skipped`
+                                : isCurrent
+                                ? `Output ${idx + 1} (current)`
+                                : `Output ${idx + 1} pending`
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-2">
+                      {activeQueue.completedIndices.length} of{" "}
+                      {activeQueue.outputs.length} done · sign in your wallet to
+                      continue
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Form prefilled from recipe. Modify if needed, then proceed
+                    with the bridge.
+                  </p>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveRecipeId(null);
-                  setActiveRecipeName(null);
-                  recipeRunMarkedRef.current = false;
-                  // Strip recipe params from URL without reload
-                  if (typeof window !== "undefined") {
-                    const url = new URL(window.location.href);
-                    url.searchParams.delete("recipeId");
-                    url.searchParams.delete("recipeName");
-                    window.history.replaceState({}, "", url.toString());
+              <div className="flex flex-col gap-1 shrink-0">
+                {activeQueue && activeQueue.outputs.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!address) return;
+                      if (
+                        !window.confirm(
+                          `Skip output ${activeQueue.currentIndex + 1} of ${activeQueue.outputs.length}?`
+                        )
+                      ) return;
+                      const updated = advanceRecipeQueue(address, "skipped");
+                      if (!updated || isQueueComplete(updated)) {
+                        clearRecipeQueue(address);
+                        toast(
+                          `Recipe queue ended · ${updated?.completedIndices.length ?? 0} of ${activeQueue.outputs.length} completed`,
+                          { duration: 5000 }
+                        );
+                        router.replace("/bridge");
+                        return;
+                      }
+                      const nextOutput = updated.outputs[updated.currentIndex];
+                      const params = new URLSearchParams({
+                        from: String(updated.sourceChainId),
+                        to: String(nextOutput.destChainId),
+                        amount: nextOutput.amount,
+                        recipeId: updated.recipeId,
+                        recipeName: updated.recipeName,
+                      });
+                      router.push(`/bridge?${params.toString()}`);
+                    }}
+                    className="text-[10px] text-zinc-400 hover:text-amber-300 px-2 py-1 rounded hover:bg-amber-500/10 leading-none whitespace-nowrap"
+                    title="Skip current output and advance"
+                  >
+                    Skip ⤳
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      activeQueue &&
+                      activeQueue.outputs.length > 1 &&
+                      !window.confirm(
+                        "Cancel queue? Outputs not yet bridged will be lost."
+                      )
+                    ) {
+                      return;
+                    }
+                    setActiveRecipeId(null);
+                    setActiveRecipeName(null);
+                    setActiveQueue(null);
+                    recipeRunMarkedRef.current = false;
+                    if (address) clearRecipeQueue(address);
+                    // Strip recipe params from URL without reload
+                    if (typeof window !== "undefined") {
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete("recipeId");
+                      url.searchParams.delete("recipeName");
+                      window.history.replaceState({}, "", url.toString());
+                    }
+                  }}
+                  className="text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded hover:bg-white/[0.04] leading-none"
+                  title={
+                    activeQueue && activeQueue.outputs.length > 1
+                      ? "Cancel queue"
+                      : "Detach from recipe"
                   }
-                }}
-                className="text-[11px] text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded hover:bg-white/[0.04] leading-none shrink-0"
-                title="Detach from recipe"
-              >
-                ✕
-              </button>
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
         )}

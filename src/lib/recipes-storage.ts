@@ -377,6 +377,118 @@ export function getActiveRecipeRun(address?: string): RecipeRun | undefined {
 }
 
 /* ------------------------------------------------------------------ */
+/* Recipe Queue (Stage 5 — sequential multi-output execution)         */
+/* ------------------------------------------------------------------ */
+
+const QUEUE_KEY = "plix:recipe-queue";
+
+export interface RecipeQueueOutput {
+  destChainId: number;
+  amount: string; // human units, computed from totalAmount × percentage
+  percentage: number;
+}
+
+export interface RecipeQueueState {
+  /** Recipe being executed */
+  recipeId: string;
+  /** Recipe name (snapshot for banner) */
+  recipeName: string;
+  /** Source chain (snapshot) */
+  sourceChainId: number;
+  /** All outputs in execution order */
+  outputs: RecipeQueueOutput[];
+  /** Current output index being executed (0-based) */
+  currentIndex: number;
+  /** Outputs already completed (by index) */
+  completedIndices: number[];
+  /** Outputs skipped by user (by index) */
+  skippedIndices: number[];
+  /** Run start timestamp */
+  startedAt: number;
+}
+
+function queueStorageKey(address: string): string {
+  return `${QUEUE_KEY}:${address.toLowerCase()}`;
+}
+
+export function loadRecipeQueue(address?: string): RecipeQueueState | null {
+  if (typeof window === "undefined" || !address) return null;
+  try {
+    const raw = localStorage.getItem(queueStorageKey(address));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.currentIndex !== "number") return null;
+    return parsed as RecipeQueueState;
+  } catch {
+    return null;
+  }
+}
+
+export function saveRecipeQueue(address: string, queue: RecipeQueueState): void {
+  try {
+    localStorage.setItem(queueStorageKey(address), JSON.stringify(queue));
+    window.dispatchEvent(new Event("plix-recipe-queue-updated"));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clearRecipeQueue(address: string): void {
+  try {
+    localStorage.removeItem(queueStorageKey(address));
+    window.dispatchEvent(new Event("plix-recipe-queue-updated"));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Advance queue to next output. Returns updated queue state.
+ * Marks current index as completed before advancing.
+ */
+export function advanceRecipeQueue(
+  address: string,
+  reason: "completed" | "skipped" = "completed"
+): RecipeQueueState | null {
+  const current = loadRecipeQueue(address);
+  if (!current) return null;
+
+  const nextCompleted =
+    reason === "completed"
+      ? [...current.completedIndices, current.currentIndex]
+      : current.completedIndices;
+  const nextSkipped =
+    reason === "skipped"
+      ? [...current.skippedIndices, current.currentIndex]
+      : current.skippedIndices;
+
+  const updated: RecipeQueueState = {
+    ...current,
+    currentIndex: current.currentIndex + 1,
+    completedIndices: nextCompleted,
+    skippedIndices: nextSkipped,
+  };
+  saveRecipeQueue(address, updated);
+  return updated;
+}
+
+/**
+ * Check if queue has more outputs to execute after the current one.
+ */
+export function hasMoreOutputs(queue: RecipeQueueState | null): boolean {
+  if (!queue) return false;
+  return queue.currentIndex < queue.outputs.length - 1;
+}
+
+/**
+ * Check if queue is fully complete (current index past last).
+ */
+export function isQueueComplete(queue: RecipeQueueState | null): boolean {
+  if (!queue) return false;
+  return queue.currentIndex >= queue.outputs.length;
+}
+
+/* ------------------------------------------------------------------ */
 /* Templates (suggested recipes for new users)                         */
 /* ------------------------------------------------------------------ */
 
