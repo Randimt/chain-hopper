@@ -495,7 +495,7 @@ function LandingFooter() {
           </p>
           <div className="flex gap-2.5">
             <SocialLink label="𝕏" href="https://x.com/ini_lerand" />
-            <SocialLink label="⌨" href="https://github.com/Randimt/chain-hopper" />
+            <SocialLink label="⌨" href="https://github.com/Randimt/Lyxsa" />
             <SocialLink label="💬" href="#" />
           </div>
         </div>
@@ -512,7 +512,7 @@ function LandingFooter() {
           links={[
             { label: "Circle CCTP", href: "https://developers.circle.com/cctp" },
             { label: "Faucet", href: "https://faucet.circle.com" },
-            { label: "GitHub", href: "https://github.com/Randimt/chain-hopper" },
+            { label: "GitHub", href: "https://github.com/Randimt/Lyxsa" },
             { label: "Status", href: "#" },
           ]}
         />

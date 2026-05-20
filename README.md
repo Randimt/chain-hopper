@@ -38,8 +38,8 @@
 ## 🏃 Local Development
 
 ```bash
-git clone https://github.com/Randimt/chain-hopper.git
-cd chain-hopper
+git clone https://github.com/Randimt/Lyxsa.git
+cd Lyxsa
 pnpm install
 cp .env.local.example .env.local
 # Set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID in .env.local
@@ -52,7 +52,7 @@ Open http://localhost:3000
 
 Deploy your own instance to Vercel:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Randimt/chain-hopper)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/Randimt/Lyxsa)
 
 ### Environment Variables
 

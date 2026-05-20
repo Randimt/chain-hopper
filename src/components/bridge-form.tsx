@@ -31,7 +31,8 @@ import {
   type RecipeQueueState,
 } from "@/lib/recipes-storage";
 
-const STORAGE_KEY = "chain-hopper:pending-bridge";
+const STORAGE_KEY = "lyxsa:pending-bridge";
+const LEGACY_STORAGE_KEY = "chain-hopper:pending-bridge"; // pre-rebrand
 
 interface PendingBridge {
   sourceChain: number;
@@ -45,7 +46,17 @@ interface PendingBridge {
 function loadPendingBridge(address?: string): PendingBridge | null {
   if (typeof window === "undefined" || !address) return null;
   try {
-    const raw = localStorage.getItem(`${STORAGE_KEY}:${address.toLowerCase()}`);
+    const newKey = `${STORAGE_KEY}:${address.toLowerCase()}`;
+    const oldKey = `${LEGACY_STORAGE_KEY}:${address.toLowerCase()}`;
+    // Auto-migrate legacy key (run once)
+    if (!localStorage.getItem(newKey)) {
+      const legacy = localStorage.getItem(oldKey);
+      if (legacy) {
+        localStorage.setItem(newKey, legacy);
+        localStorage.removeItem(oldKey);
+      }
+    }
+    const raw = localStorage.getItem(newKey);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;

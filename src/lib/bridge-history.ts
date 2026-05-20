@@ -5,7 +5,8 @@
  * Schema versioned for future migration when Phase 2 (multi-aggregator) lands.
  */
 
-const HISTORY_KEY = "chain-hopper:history";
+const HISTORY_KEY = "lyxsa:history";
+const LEGACY_HISTORY_KEY = "chain-hopper:history"; // pre-rebrand
 const MAX_RECORDS = 50; // Cap to avoid localStorage quota issues
 
 export type BridgeProvider = "cctp" | "relay" | "across" | "lifi";
@@ -39,8 +40,36 @@ function storageKey(address: string): string {
   return `${HISTORY_KEY}:${address.toLowerCase()}`;
 }
 
+function legacyStorageKey(address: string): string {
+  return `${LEGACY_HISTORY_KEY}:${address.toLowerCase()}`;
+}
+
+/**
+ * Migrate legacy "chain-hopper:history" entries to "lyxsa:history" once.
+ * Idempotent — safe to call repeatedly.
+ */
+function migrateLegacyHistory(address: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const newKey = storageKey(address);
+    const oldKey = legacyStorageKey(address);
+    // If new key already has data, no migration needed
+    if (localStorage.getItem(newKey)) return;
+    const legacyData = localStorage.getItem(oldKey);
+    if (!legacyData) return;
+    localStorage.setItem(newKey, legacyData);
+    localStorage.removeItem(oldKey);
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[lyxsa] Migrated history for ${address.slice(0, 6)}...`);
+    }
+  } catch {
+    /* ignore migration errors — legacy data preserved */
+  }
+}
+
 export function loadBridgeHistory(address?: string): BridgeRecord[] {
   if (typeof window === "undefined" || !address) return [];
+  migrateLegacyHistory(address); // run-once auto migration
   try {
     const raw = localStorage.getItem(storageKey(address));
     if (!raw) return [];
