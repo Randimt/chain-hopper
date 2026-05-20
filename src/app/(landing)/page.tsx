@@ -124,7 +124,7 @@ function Hero3D() {
       <div className="relative z-10 text-center max-w-4xl px-6">
         <div className="ch-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-xs text-green-400 mb-8 backdrop-blur">
           <span className="w-[7px] h-[7px] rounded-full bg-green-500 ch-dot-pulse"></span>
-          Phase 1 live · 22 testnets · Powered by CCTP V2
+          Cross-VM bridge live · 22 EVM + Solana · Powered by CCTP V2
         </div>
 
         <h1 className="ch-fade-up-delay-1 text-[clamp(48px,9vw,108px)] font-bold leading-[0.95] tracking-tight mb-6">
@@ -136,7 +136,7 @@ function Hero3D() {
         </h1>
 
         <p className="ch-fade-up-delay-2 text-[clamp(16px,2vw,20px)] text-zinc-400 max-w-xl mx-auto mb-10 leading-relaxed">
-          Native USDC bridging in 30 seconds. Today, USDC across 7 testnets. Tomorrow, multi-asset recipes that handle bridge + swap in one tx.
+          Native USDC bridging in 30 seconds. Today, USDC across 22 EVM testnets + Solana Devnet. Tomorrow, multi-asset recipes that handle bridge + swap in one tx.
         </p>
 
         <div className="ch-fade-up-delay-3 flex gap-3.5 justify-center flex-wrap">
@@ -284,7 +284,7 @@ function RoadmapSection() {
         </span>
       </h2>
       <p className="text-lg text-zinc-400 mb-16 max-w-xl leading-relaxed">
-        Building the unified cross-chain experience in three phases. Each phase ships a working product, not a promise.
+        Building the unified cross-chain experience in five phases. Each phase ships a working product, not a promise.
       </p>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -331,17 +331,31 @@ function RoadmapSection() {
           ]}
         />
         <PhaseCard
-          tone="future"
-          status="⏳ COMING SOON"
+          tone="live"
+          status="LIVE NOW"
           num="04"
           title="Solana integration"
-          eta="2027 · planned"
+          eta="Q2 2026 · shipped"
           features={[
             "Solana Devnet via CCTP V2 Domain 5",
-            "Phantom wallet adapter (dual-wallet UX)",
-            "Bridge USDC EVM ↔ Solana",
-            "Anchor SDK + TokenMessengerMinter program",
-            "Non-EVM expansion foundation",
+            "Phantom + Backpack + Solflare + OKX wallets",
+            "Bridge USDC EVM ↔ Solana (live)",
+            "Powered by Circle Bridge Kit SDK",
+            "First non-EVM destination shipped",
+          ]}
+        />
+        <PhaseCard
+          tone="future"
+          status="⏳ COMING SOON"
+          num="05"
+          title="Move VM expansion"
+          eta="2027 · planned"
+          features={[
+            "Aptos integration via CCTP V2",
+            "Sui integration via CCTP V2",
+            "Move-native USDC support",
+            "Petra + Sui wallet adapters",
+            "Cross-VM consolidation: EVM ↔ SVM ↔ Move",
           ]}
         />
       </div>
@@ -414,7 +428,7 @@ function FeaturesSection() {
   const features = [
     { icon: "⚡", title: "Sub-30s finality", desc: "CCTP V2 Fast Transfer settles in under 30 seconds. No optimistic delays, no fraud proofs." },
     { icon: "🔐", title: "Native, not wrapped", desc: "Real USDC at the destination. No bridged USDC.e, no liquidity pools, no peg risk." },
-    { icon: "🌐", title: "7 chains, growing", desc: "Sepolia, Base, Arbitrum, Optimism, Polygon, Avalanche, and Circle's Arc Network." },
+    { icon: "🌐", title: "Cross-VM, 23 chains", desc: "22 EVM testnets + Solana Devnet. First non-EVM destination shipped. Aptos and Sui next." },
     { icon: "⌨", title: "Open source", desc: "Built on viem + wagmi + Next.js 15. Composable hooks. MIT licensed. Audit yourself." },
     { icon: "📱", title: "Resume anywhere", desc: "Bridge stuck mid-flow? Resume from any device. Your tx state is portable." },
     { icon: "🛡", title: "Circle-grade security", desc: "First-party protocol from USDC's creator. No third-party bridges to trust." },
