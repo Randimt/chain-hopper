@@ -303,17 +303,17 @@ function RoadmapSection() {
           ]}
         />
         <PhaseCard
-          tone="progress"
-          status="⚙ IN PROGRESS"
+          tone="live"
+          status="LIVE NOW"
           num="02"
-          title="Multi-aggregator + swap"
-          eta="Q3 2026 · in development"
+          title="Solana integration"
+          eta="Q2 2026 · shipped"
           features={[
-            "Across, Relay, LiFi quote comparison",
-            "USDC ↔ USDT/ETH swap (1inch SDK)",
-            "Best-price routing engine",
-            "Slippage controls",
-            "Cross-chain swap (bridge + swap chained)",
+            "Solana Devnet via CCTP V2 Domain 5",
+            "Phantom + Backpack + Solflare + OKX wallets",
+            "Bridge USDC EVM ↔ Solana (bidirectional)",
+            "Powered by Circle Bridge Kit SDK",
+            "First non-EVM destination shipped",
           ]}
         />
         <PhaseCard
@@ -327,21 +327,21 @@ function RoadmapSection() {
             "Multi-output sequential queue (1 click → N bridges)",
             "Cross-VM recipes (EVM ↔ Solana)",
             "Per-output skip/cancel + refresh-safe resume",
-            "Templates: Diversify L2, Cross-VM split",
+            "Reclaim feature for orphaned burns",
           ]}
         />
         <PhaseCard
-          tone="live"
-          status="LIVE NOW"
+          tone="progress"
+          status="⚙ IN PROGRESS"
           num="04"
-          title="Solana integration"
-          eta="Q2 2026 · shipped"
+          title="Multi-aggregator + swap"
+          eta="Q3 2026 · in development"
           features={[
-            "Solana Devnet via CCTP V2 Domain 5",
-            "Phantom + Backpack + Solflare + OKX wallets",
-            "Bridge USDC EVM ↔ Solana (live)",
-            "Powered by Circle Bridge Kit SDK",
-            "First non-EVM destination shipped",
+            "Across, Relay, LiFi quote comparison",
+            "USDC ↔ USDT/ETH swap (1inch SDK)",
+            "Best-price routing engine",
+            "Slippage controls",
+            "Cross-chain swap (bridge + swap chained)",
           ]}
         />
         <PhaseCard
