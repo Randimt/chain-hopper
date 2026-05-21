@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { erc20Abi, encodePacked, padHex, maxUint256, type Address, type Hex } from "viem";
+import { erc20Abi, padHex, maxUint256, type Address, type Hex } from "viem";
 import { useAccount, usePublicClient, useWalletClient, useSwitchChain } from "wagmi";
 
 import { CHAIN_MAP, USDC_ADDRESSES } from "@/lib/wagmi";
@@ -15,6 +15,11 @@ import {
 import { CCTP_DOMAINS, FINALITY_FAST } from "@/lib/cctp";
 import { waitForChainSync } from "@/lib/wait-for-chain";
 import { friendlyError } from "@/lib/error-messages";
+import {
+  addBridgeRecord,
+  generateBridgeId,
+  type BridgeRecord,
+} from "@/lib/bridge-history";
 
 export type BatchOutput = {
   destChainId: number;
@@ -33,7 +38,13 @@ export type BatchBridgeState =
   | { status: "approving" }
   | { status: "approved"; approveTxHash: Hex }
   | { status: "burning" }
-  | { status: "burned"; batchTxHash: Hex; messageHashes: Hex[]; legs: BatchOutput[] }
+  | {
+      status: "burned";
+      batchTxHash: Hex;
+      messageHashes: Hex[];
+      legs: BatchOutput[];
+      recordIds: string[]; // saved bridge-history record IDs (1 per leg)
+    }
   | { status: "error"; errorMessage: string };
 
 const MESSAGE_SENT_TOPIC =
@@ -201,11 +212,51 @@ export function useBatchBridge() {
           );
         }
 
+        // ─────────────────────────────────────────────────────────────
+        // Save 1 BridgeRecord per leg as reclaimable (status="pending").
+        // Stage 8 will polish: claim flow + parse messageBytes + auto-mint.
+        // For now, user has full record + can manually claim via /history.
+        // ─────────────────────────────────────────────────────────────
+        const startedAt = Date.now();
+        const recordIds: string[] = [];
+        for (let i = 0; i < outputs.length; i++) {
+          const out = outputs[i];
+          const recordId = generateBridgeId();
+          recordIds.push(recordId);
+          const record: BridgeRecord = {
+            id: recordId,
+            provider: "cctp",
+            sourceChain,
+            destChain: out.destChainId,
+            // amount in USDC display units (6 decimals), as string
+            amount: (Number(out.amountRaw) / 1_000_000).toString(),
+            status: "pending",
+            burnTxHash: txHash,
+            startedAt,
+            reclaimable: true,
+            recipeId: undefined,
+            recipeName: undefined,
+          };
+          try {
+            addBridgeRecord(address!, record);
+          } catch (e) {
+            // localStorage failure shouldn't block the rest of the batch
+            console.error("[batch] Failed to save record", i, e);
+          }
+        }
+        // Notify other components (history page) that records changed
+        try {
+          window.dispatchEvent(new CustomEvent("lyxsa:bridge-history-updated"));
+        } catch {
+          /* SSR or non-browser */
+        }
+
         setState({
           status: "burned",
           batchTxHash: txHash,
           messageHashes,
           legs: outputs,
+          recordIds,
         });
       } catch (err) {
         setState({ status: "error", errorMessage: friendlyError(err) });

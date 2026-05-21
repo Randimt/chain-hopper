@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
@@ -35,7 +35,7 @@ export default function BatchPage() {
 
   // Source USDC balance
   const usdcAddress = USDC_ADDRESSES[sourceChain];
-  const { data: balance } = useReadContract({
+  const { data: balance, refetch: refetchBalance } = useReadContract({
     address: usdcAddress,
     abi: erc20Abi,
     functionName: "balanceOf",
@@ -46,7 +46,7 @@ export default function BatchPage() {
 
   // Splitter allowance check
   const splitterAddr = getSplitterAddress(sourceChain);
-  const { data: allowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: usdcAddress,
     abi: erc20Abi,
     functionName: "allowance",
@@ -54,6 +54,15 @@ export default function BatchPage() {
     chainId: sourceChain,
     query: { enabled: !!address && !!usdcAddress && !!splitterAddr },
   });
+
+  // After approve confirms (state.status === "approved"), wagmi cache is stale.
+  // Force refetch so the UI flips from "Approve" → "Bridge" button.
+  useEffect(() => {
+    if (state.status === "approved") {
+      refetchAllowance();
+      refetchBalance();
+    }
+  }, [state.status, refetchAllowance, refetchBalance]);
 
   // ─────────────────────────────────────────────────────────────
   // Derived state
@@ -81,6 +90,15 @@ export default function BatchPage() {
 
   const needsApprove = !allowance || allowance < totalAmountRaw;
   const sourceSupported = isBatchBridgeSupported(sourceChain);
+
+  // ─────────────────────────────────────────────────────────────
+  // Form lock — prevent editing source/outputs once batch tx is in flight
+  // or has burned (until user explicitly resets). Approve is reversible
+  // (user can re-approve different amount), so we only lock from "burning"
+  // onwards.
+  // ─────────────────────────────────────────────────────────────
+  const formLocked =
+    state.status === "burning" || state.status === "burned";
 
   // ─────────────────────────────────────────────────────────────
   // Handlers
@@ -148,15 +166,21 @@ export default function BatchPage() {
       </header>
 
       {/* SOURCE */}
-      <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 mb-4">
-        <div className="font-mono text-[11px] uppercase tracking-[0.15em] mb-3 text-zinc-500">
-          // source
+      <section
+        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 mb-4 ${formLocked ? "opacity-60 pointer-events-none" : ""}`}
+        aria-disabled={formLocked}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-zinc-500">
+            // source
+          </div>
+          {formLocked && (
+            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 font-mono uppercase tracking-wider">
+              Locked · batch in flight
+            </span>
+          )}
         </div>
-        <ChainSelector
-          value={sourceChain}
-          onChange={setSourceChain}
-          label="From"
-        />
+        <BatchSourcePicker value={sourceChain} onChange={setSourceChain} />
         {!sourceSupported && (
           <div className="mt-3 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
             ⚠️ LyxsaSplitter not deployed on this chain yet. Currently live on:
@@ -169,7 +193,10 @@ export default function BatchPage() {
       </section>
 
       {/* OUTPUTS */}
-      <section className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 mb-4">
+      <section
+        className={`bg-zinc-900/30 border border-zinc-800 rounded-xl p-5 mb-4 ${formLocked ? "opacity-60 pointer-events-none" : ""}`}
+        aria-disabled={formLocked}
+      >
         <div className="flex items-center justify-between mb-3">
           <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-zinc-500">
             // destinations ({outputs.length}/{MAX_BATCH_DESTINATIONS})
@@ -177,7 +204,7 @@ export default function BatchPage() {
           <button
             type="button"
             onClick={addOutput}
-            disabled={outputs.length >= MAX_BATCH_DESTINATIONS}
+            disabled={outputs.length >= MAX_BATCH_DESTINATIONS || formLocked}
             className="text-xs px-3 py-1 rounded-md bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             + Add destination
@@ -190,7 +217,7 @@ export default function BatchPage() {
               key={out.id}
               draft={out}
               excludeChain={sourceChain}
-              canRemove={outputs.length > 1}
+              canRemove={outputs.length > 1 && !formLocked}
               onUpdate={(patch) => updateOutput(out.id, patch)}
               onRemove={() => removeOutput(out.id)}
             />
@@ -267,14 +294,21 @@ export default function BatchPage() {
         {state.status === "burned" && (
           <div className="text-xs bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4 space-y-2">
             <div className="font-semibold text-cyan-300">
-              ✓ Batch submitted! {state.messageHashes.length} burns broadcast.
+              ✓ Batch submitted! {state.legs.length} burns broadcast.
             </div>
             <div className="text-zinc-400 font-mono text-[11px] truncate">
               tx: {state.batchTxHash}
             </div>
-            <div className="text-zinc-500 mt-2">
-              Attestation tracking & per-output mint UX coming in Stage 8.
-              For now, USDC arrives via CCTP V2 attestation flow (~30s).
+            <div className="text-zinc-300 mt-2">
+              <strong className="text-amber-300">Saved {state.recordIds.length} records to History as Reclaimable.</strong>
+              {" "}USDC will arrive at destinations via CCTP V2 attestation flow (~30s per leg).
+            </div>
+            <div className="text-zinc-500 mt-1">
+              Stage 8 will add automated mint UX. For now, claim each output via{" "}
+              <Link href="/history" className="text-cyan-400 hover:text-cyan-300 underline">
+                /history
+              </Link>{" "}
+              once attestation is ready.
             </div>
             <button
               type="button"
@@ -316,6 +350,43 @@ type OutputDraft = {
   destChainId: number;
   amountStr: string;
 };
+
+/**
+ * Source picker filtered to chains where LyxsaSplitter is actually deployed.
+ * Saran user: only show chains with active contracts to avoid confusion.
+ */
+function BatchSourcePicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (chainId: number) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-xs uppercase tracking-wider text-zinc-500 font-medium">
+        From
+      </label>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full h-10 px-3 rounded-md bg-zinc-950 border border-white/10 text-sm text-zinc-200 focus:border-cyan-500/40 focus:outline-none"
+      >
+        {BATCH_BRIDGE_SOURCE_CHAINS.map((id) => {
+          const info = CHAIN_INFO[id];
+          return (
+            <option key={id} value={id}>
+              {info?.name ?? `Chain ${id}`} (Splitter live)
+            </option>
+          );
+        })}
+      </select>
+      <div className="text-[11px] text-zinc-600">
+        4 chains active · Phase 4 expanding to 22 EVM testnets
+      </div>
+    </div>
+  );
+}
 
 function OutputRow({
   draft,
