@@ -2,14 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAccount } from "wagmi";
-import { CHAIN_INFO } from "@/lib/wagmi";
 import {
   loadBridgeHistory,
   clearBridgeHistory,
+  type BridgeRecord,
   groupRecordsByBatchTx,
   isBatchRecord,
-  getReclaimRoute,
-  type BridgeRecord,
+} from "@/lib/bridge-history";
   type BridgeStatus,
   type BatchGroup,
 } from "@/lib/bridge-history";
@@ -80,8 +79,13 @@ function HistoryItem({
   const isRecipe = !!record.recipeId;
   const canReclaim = record.status === "pending" && !!record.burnTxHash && !!record.reclaimable;
 
-  // Approach C: route batch reclaims to /batch, single-tx to /bridge
-  const reclaimHref = canReclaim ? getReclaimRoute(record, isBatch) : "";
+  // Approach C: route batch reclaims to /batch, single-tx to /bridge.
+  // We have `isBatch` precomputed by parent (avoids re-running detection here).
+  const reclaimHref = canReclaim
+    ? isBatch && record.burnTxHash
+      ? `/batch?recover=${record.burnTxHash}`
+      : `/bridge?reclaim=${record.id}`
+    : "";
 
   return (
     <div className={`rounded-lg border bg-zinc-950/50 overflow-hidden ${
