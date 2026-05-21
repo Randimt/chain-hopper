@@ -7,6 +7,7 @@ import { erc20Abi, formatUnits } from "viem";
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
 import { loadBridgeHistory, type BridgeRecord } from "@/lib/bridge-history";
 import { SolanaBalanceRow } from "@/components/solana-balance-row";
+import { useSolanaUsdcBalance } from "@/hooks/useSolanaBalance";
 
 function StatCard({
   label,
@@ -49,6 +50,16 @@ export default function DashboardPage() {
   const { address, isConnected } = useAccount();
   const [history, setHistory] = useState<BridgeRecord[]>([]);
   const [showZero, setShowZero] = useState(false);
+
+  // Solana USDC balance — included in Total USDC aggregation
+  const {
+    balance: solanaBalanceStr,
+    connected: solanaConnected,
+  } = useSolanaUsdcBalance();
+  const solanaBalance = useMemo(
+    () => (solanaConnected ? parseFloat(solanaBalanceStr) || 0 : 0),
+    [solanaBalanceStr, solanaConnected]
+  );
 
   // Refresh on mount + listen for updates
   useEffect(() => {
@@ -95,10 +106,13 @@ export default function DashboardPage() {
       .sort((a, b) => b.amount - a.amount);
   }, [balanceData, chainIds]);
 
-  const totalUsdc = balances.reduce((sum, b) => sum + b.amount, 0);
+  const totalEvmUsdc = balances.reduce((sum, b) => sum + b.amount, 0);
+  const totalUsdc = totalEvmUsdc + solanaBalance;
   const nonZeroBalances = balances.filter((b) => b.amount > 0);
   const zeroCount = balances.length - nonZeroBalances.length;
   const visibleBalances = showZero ? balances : nonZeroBalances;
+  const totalChainCount =
+    nonZeroBalances.length + (solanaBalance > 0 ? 1 : 0);
   const stats = useMemo(() => {
     const now = Date.now();
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
@@ -164,7 +178,7 @@ export default function DashboardPage() {
         <StatCard
           label="Total USDC"
           value={totalUsdc.toFixed(2)}
-          meta={`across ${balances.filter((b) => b.amount > 0).length} chains`}
+          meta={`across ${totalChainCount} chain${totalChainCount === 1 ? "" : "s"}`}
         />
         <StatCard
           label="Bridges Today"
