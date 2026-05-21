@@ -174,12 +174,18 @@ export function useBatchBridge() {
           if (destDomain === undefined) {
             throw new Error(`No CCTP domain mapping for chain ${out.destChainId}`);
           }
+          // Fast Transfer requires maxFee > 0 — when 0, Circle falls back to
+          // STANDARD finality (~10-19 min on testnet sandbox) regardless of
+          // minFinalityThreshold. Use 0.1% cap (matches CCTP production fee
+          // schedule: ~1000 wei per million USDC). Fee is deducted from the
+          // minted amount on the destination chain.
+          const maxFee = out.amountRaw / 1000n;
           return {
             amount: out.amountRaw,
             destinationDomain: destDomain,
             // EVM recipient: left-pad address to bytes32
             mintRecipient: padHex(out.recipient, { size: 32 }),
-            maxFee: 0n, // accept default Circle fee
+            maxFee, // 0.1% fee cap → enables FAST attestation (~30s)
             minFinalityThreshold: FINALITY_FAST, // 1000 = ~30s
           };
         });
