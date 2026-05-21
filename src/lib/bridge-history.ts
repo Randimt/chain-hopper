@@ -92,15 +92,13 @@ export function saveBridgeHistory(address: string, records: BridgeRecord[]) {
 
 export function addBridgeRecord(address: string, record: BridgeRecord) {
   const existing = loadBridgeHistory(address);
-  // Dedupe by id (update from pending → complete) AND by burnTxHash (resume case:
-  // new "complete" record overrides previous "failed" record for same on-chain burn).
-  const filtered = existing.filter((r) => {
-    if (r.id === record.id) return false;
-    if (record.burnTxHash && r.burnTxHash && r.burnTxHash === record.burnTxHash) {
-      return false;
-    }
-    return true;
-  });
+  // Dedupe by id only (update from pending → complete).
+  //
+  // NOTE: We deliberately do NOT dedupe by burnTxHash anymore — batch bridges
+  // produce N records that all share the same burnTxHash but route to different
+  // destinations. groupRecordsByBatchTx() is the source of truth for batch UX.
+  // For single-tx flows, burnTxHash is unique by construction so this is safe.
+  const filtered = existing.filter((r) => r.id !== record.id);
   saveBridgeHistory(address, [...filtered, record]);
 }
 
@@ -114,4 +112,126 @@ export function clearBridgeHistory(address: string) {
 
 export function generateBridgeId(): string {
   return `br_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Batch detection helpers (Approach C — unified /batch recovery hub)
+//
+// A "batch" record is one of N records that share the same burnTxHash,
+// each routing to a different destination chain. The /batch route handles
+// recovery for these (single-tx records keep using /bridge).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface BatchGroup {
+  burnTxHash: `0x${string}`;
+  sourceChain: number;
+  records: BridgeRecord[];
+  totalAmount: number;
+  startedAt: number;
+  /** Earliest record id in the group — useful as stable key */
+  primaryId: string;
+}
+
+/**
+ * Group history records by burnTxHash. Records WITHOUT burnTxHash (e.g.
+ * complete records that never had reclaim flow saved) are skipped from grouping.
+ *
+ * Returns a Map keyed by burnTxHash. Single-tx records that happen to be alone
+ * in their group are still included — caller decides whether to treat them
+ * as batch or single via `isBatchRecord`.
+ */
+export function groupRecordsByBatchTx(
+  records: BridgeRecord[],
+): Map<`0x${string}`, BatchGroup> {
+  const groups = new Map<`0x${string}`, BatchGroup>();
+  for (const r of records) {
+    if (!r.burnTxHash) continue;
+    const existing = groups.get(r.burnTxHash);
+    if (existing) {
+      existing.records.push(r);
+      existing.totalAmount += Number(r.amount) || 0;
+      existing.startedAt = Math.min(existing.startedAt, r.startedAt);
+    } else {
+      groups.set(r.burnTxHash, {
+        burnTxHash: r.burnTxHash,
+        sourceChain: r.sourceChain,
+        records: [r],
+        totalAmount: Number(r.amount) || 0,
+        startedAt: r.startedAt,
+        primaryId: r.id,
+      });
+    }
+  }
+  return groups;
+}
+
+/**
+ * Determine whether a record belongs to a multi-leg batch (vs a single-tx bridge).
+ *
+ * Heuristic: if 2+ records in the same address history share this record's
+ * burnTxHash, it's a batch leg. Otherwise it's a standalone single-tx bridge.
+ *
+ * Recipe-queue records also share recipeId but each leg has its OWN burnTxHash
+ * (sequential queue, not atomic batch) — so they correctly classify as "single".
+ */
+export function isBatchRecord(
+  record: BridgeRecord,
+  allRecords: BridgeRecord[],
+): boolean {
+  if (!record.burnTxHash) return false;
+  const sameTxCount = allRecords.filter(
+    (r) => r.burnTxHash === record.burnTxHash,
+  ).length;
+  return sameTxCount >= 2;
+}
+
+/**
+ * Find all records sharing a batch tx hash (siblings of a known batch leg).
+ * Returns empty array if record is not a batch leg.
+ */
+export function findBatchSiblings(
+  burnTxHash: `0x${string}`,
+  allRecords: BridgeRecord[],
+): BridgeRecord[] {
+  return allRecords.filter((r) => r.burnTxHash === burnTxHash);
+}
+
+/**
+ * Aggregate batch group status from per-leg statuses.
+ * - "complete" if ALL legs are complete
+ * - "failed" if ANY leg is failed AND no leg is pending
+ * - "pending" if any leg is still in flight
+ */
+export function deriveBatchStatus(
+  group: BatchGroup,
+): "complete" | "failed" | "pending" {
+  const statuses = group.records.map((r) => r.status);
+  if (statuses.every((s) => s === "complete")) return "complete";
+  if (statuses.some((s) => s === "pending")) return "pending";
+  if (statuses.some((s) => s === "failed")) return "failed";
+  return "pending";
+}
+
+/**
+ * Reclaim destination router — pick the right route for a Reclaim button.
+ *
+ * - Batch leg (siblings exist) → /batch?recover=<burnTxHash>
+ * - Single-tx → /bridge?reclaim=<recordId>  (existing flow, no change)
+ *
+ * Recipe-queue legs go through /bridge (each leg is independent single-tx).
+ */
+export function getReclaimRoute(
+  record: BridgeRecord,
+  allRecords: BridgeRecord[],
+): { href: string; mode: "batch" | "single" } {
+  if (record.burnTxHash && isBatchRecord(record, allRecords)) {
+    return {
+      href: `/batch?recover=${record.burnTxHash}`,
+      mode: "batch",
+    };
+  }
+  return {
+    href: `/bridge?reclaim=${record.id}`,
+    mode: "single",
+  };
 }

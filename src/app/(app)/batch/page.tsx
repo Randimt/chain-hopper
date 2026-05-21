@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAccount, useReadContract } from "wagmi";
 import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 
@@ -20,12 +21,54 @@ import {
   useBatchLegMint,
   type LegState,
 } from "@/hooks/useBatchAttestations";
+import {
+  loadBridgeHistory,
+  findBatchSiblings,
+  type BridgeRecord,
+} from "@/lib/bridge-history";
 
 /**
  * Phase 4 — Batch Bridge MVP
  * Fan-out splitter UI: 1 source → up to 5 EVM destinations in 1 atomic tx.
+ *
+ * Approach C: Also serves as universal recovery hub when ?recover=<txHash>
+ * is in the URL — re-mounts BatchProgress UI for previously-burned batch
+ * records found in history.
  */
 export default function BatchPage() {
+  // Suspense wrapper required because useSearchParams() opts the route
+  // into dynamic rendering on Next 15+.
+  return (
+    <Suspense fallback={<BatchPageSkeleton />}>
+      <BatchPageInner />
+    </Suspense>
+  );
+}
+
+function BatchPageSkeleton() {
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <div className="h-8 w-48 bg-zinc-900/50 rounded animate-pulse mb-6" />
+      <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500 text-sm">
+        Loading…
+      </div>
+    </div>
+  );
+}
+
+function BatchPageInner() {
+  const params = useSearchParams();
+  const recoverTxHash = params.get("recover") as `0x${string}` | null;
+
+  // Recovery mode short-circuits the create flow entirely.
+  if (recoverTxHash) {
+    return <BatchRecoveryView txHash={recoverTxHash} />;
+  }
+
+  return <BatchCreateView />;
+}
+
+function BatchCreateView() {
   const { address } = useAccount();
   const { state, approve, batchBurn, reset } = useBatchBridge();
 
@@ -577,5 +620,170 @@ function OutputRow({
         </button>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Recovery View (Approach C)
+//
+// Mounted when /batch?recover=<txHash> is hit. Loads matching records from
+// localStorage, reconstructs legs[], and re-uses Stage 8 BatchProgress UI
+// for attestation tracking + per-leg mint.
+//
+// Records that are already "complete" still render but with the Mint button
+// suppressed (already-claimed legs show ✓ Complete).
+// ─────────────────────────────────────────────────────────────────────────────
+function BatchRecoveryView({ txHash }: { txHash: `0x${string}` }) {
+  const router = useRouter();
+  const { address } = useAccount();
+  const [records, setRecords] = useState<BridgeRecord[] | null>(null);
+
+  // Load records once wallet is connected
+  useEffect(() => {
+    if (!address) return;
+    const all = loadBridgeHistory(address);
+    const siblings = findBatchSiblings(txHash, all);
+    setRecords(siblings);
+  }, [address, txHash]);
+
+  // Derive sourceChain + legs from records (records share sourceChain)
+  const sourceChain = records && records.length > 0 ? records[0].sourceChain : 0;
+  const legs = useMemo(() => {
+    if (!records || !address) return [];
+    return records.map((r) => ({
+      destChainId: r.destChain,
+      amountRaw: parseUnits(r.amount || "0", 6),
+      recipient: address as Address,
+    }));
+  }, [records, address]);
+
+  const enabled = !!records && records.length > 0 && !!sourceChain;
+
+  const { legStates, setLegStates } = useBatchAttestations({
+    sourceChain,
+    batchTxHash: enabled ? txHash : undefined,
+    legs,
+    enabled,
+  });
+
+  const { mintLeg } = useBatchLegMint(legStates, setLegStates, txHash);
+
+  // ─────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────
+  if (!address) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <RecoveryHeader />
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-8 text-center">
+          <div className="text-zinc-400 text-sm mb-2">Connect wallet to recover</div>
+          <div className="text-zinc-600 text-xs">
+            Records are stored per wallet — connect the same wallet that started this batch.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (records === null) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <RecoveryHeader />
+        <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500 text-sm">
+          Loading batch records…
+        </div>
+      </div>
+    );
+  }
+
+  if (records.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+        <RecoveryHeader />
+        <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-8 text-center">
+          <div className="text-amber-400 text-sm mb-2">⚠️ No records found</div>
+          <div className="text-zinc-500 text-xs mb-4">
+            Tx <span className="font-mono">{txHash.slice(0, 10)}…{txHash.slice(-6)}</span> has
+            no matching batch entries in this wallet&apos;s history.
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/history")}
+            className="text-xs text-cyan-400 hover:text-cyan-300 underline"
+          >
+            ← Back to History
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const sourceInfo = CHAIN_INFO[sourceChain];
+  const totalAmount = records.reduce((sum, r) => sum + Number(r.amount || 0), 0);
+  const completedCount = records.filter((r) => r.status === "complete").length;
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-10">
+      <RecoveryHeader />
+
+      {/* Recovery context summary */}
+      <section className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-5 mb-4">
+        <div className="font-mono text-[11px] uppercase tracking-[0.15em] mb-3 text-zinc-500">
+          // recovery context
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="text-zinc-400">Source</div>
+          <div className="text-right font-mono text-zinc-200">
+            {sourceInfo?.name ?? `Chain ${sourceChain}`}
+          </div>
+          <div className="text-zinc-400">Total burned</div>
+          <div className="text-right font-mono text-zinc-200">{totalAmount} USDC</div>
+          <div className="text-zinc-400">Legs</div>
+          <div className="text-right font-mono text-zinc-200">
+            {records.length} {completedCount > 0 && `(${completedCount} done)`}
+          </div>
+          <div className="text-zinc-400">Burn tx</div>
+          <div className="text-right font-mono text-[11px] text-zinc-500 truncate">
+            {txHash.slice(0, 10)}…{txHash.slice(-8)}
+          </div>
+        </div>
+      </section>
+
+      {/* Reuse BatchProgress UI from Stage 8 */}
+      <BatchProgress
+        batchTxHash={txHash}
+        legStates={legStates}
+        onMintLeg={mintLeg}
+        onReset={() => router.push("/history")}
+      />
+
+      <div className="mt-8 text-xs text-zinc-600 text-center">
+        Recovery mode · Stage 8 attestation tracker
+      </div>
+    </div>
+  );
+}
+
+function RecoveryHeader() {
+  return (
+    <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <h1 className="text-3xl font-bold">Recover Batch</h1>
+          <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 text-[10px] font-bold tracking-wider uppercase">
+            Recovery
+          </span>
+        </div>
+        <p className="text-zinc-500 text-sm">
+          Resume attestation tracking and mint pending legs.
+        </p>
+      </div>
+      <Link
+        href="/history"
+        className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+      >
+        ← Back to History
+      </Link>
+    </header>
   );
 }
