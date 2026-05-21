@@ -125,7 +125,8 @@ export function generateBridgeId(): string {
 export interface BatchGroup {
   burnTxHash: `0x${string}`;
   sourceChain: number;
-  records: BridgeRecord[];
+  /** All records sharing this burnTxHash (one per destination chain) */
+  legs: BridgeRecord[];
   totalAmount: number;
   startedAt: number;
   /** Earliest record id in the group — useful as stable key */
@@ -148,14 +149,14 @@ export function groupRecordsByBatchTx(
     if (!r.burnTxHash) continue;
     const existing = groups.get(r.burnTxHash);
     if (existing) {
-      existing.records.push(r);
+      existing.legs.push(r);
       existing.totalAmount += Number(r.amount) || 0;
       existing.startedAt = Math.min(existing.startedAt, r.startedAt);
     } else {
       groups.set(r.burnTxHash, {
         burnTxHash: r.burnTxHash,
         sourceChain: r.sourceChain,
-        records: [r],
+        legs: [r],
         totalAmount: Number(r.amount) || 0,
         startedAt: r.startedAt,
         primaryId: r.id,
@@ -205,7 +206,7 @@ export function findBatchSiblings(
 export function deriveBatchStatus(
   group: BatchGroup,
 ): "complete" | "failed" | "pending" {
-  const statuses = group.records.map((r) => r.status);
+  const statuses = group.legs.map((r) => r.status);
   if (statuses.every((s) => s === "complete")) return "complete";
   if (statuses.some((s) => s === "pending")) return "pending";
   if (statuses.some((s) => s === "failed")) return "failed";
