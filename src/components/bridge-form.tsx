@@ -21,7 +21,7 @@ import { useAcrossBridge } from "@/hooks/useAcrossBridge";
 import { useSolanaReceive } from "@/hooks/useSolanaReceive";
 import { useQuotes } from "@/hooks/useQuotes";
 import { parseUSDC, QuoteProvider, PROVIDER_INFO } from "@/lib/quotes/types";
-import { addBridgeRecord, generateBridgeId, loadBridgeHistory, type BridgeRecord } from "@/lib/bridge-history";
+import { addBridgeRecord, generateBridgeId, loadBridgeHistory, isBatchRecord, type BridgeRecord } from "@/lib/bridge-history";
 import { useRecipes } from "@/hooks/useRecipes";
 import {
   loadRecipeQueue,
@@ -254,6 +254,18 @@ export function BridgeForm() {
     if (reclaimParam && address) {
       const records = loadBridgeHistory(address);
       const record = records.find((r) => r.id === reclaimParam);
+
+      // Approach C: batch records redirect to /batch?recover=<txHash>
+      // Single-tx records use existing /bridge reclaim flow below.
+      if (record && record.burnTxHash && isBatchRecord(record, records)) {
+        toast.success("Multi-leg batch — redirecting to batch recovery view", {
+          id: "batch-redirect",
+          duration: 3000,
+        });
+        router.replace(`/batch?recover=${record.burnTxHash}`);
+        return;
+      }
+
       if (record && record.burnTxHash && record.status === "pending") {
         setSourceChain(record.sourceChain);
         setDestChain(record.destChain);

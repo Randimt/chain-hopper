@@ -6,8 +6,12 @@ import { CHAIN_INFO } from "@/lib/wagmi";
 import {
   loadBridgeHistory,
   clearBridgeHistory,
+  groupRecordsByBatchTx,
+  isBatchRecord,
+  getReclaimRoute,
   type BridgeRecord,
   type BridgeStatus,
+  type BatchGroup,
 } from "@/lib/bridge-history";
 
 function shortHash(hash: `0x${string}`) {
@@ -62,7 +66,13 @@ function ChainBadge({ chainId }: { chainId: number }) {
   );
 }
 
-function HistoryItem({ record }: { record: BridgeRecord }) {
+function HistoryItem({
+  record,
+  isBatch,
+}: {
+  record: BridgeRecord;
+  isBatch: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   const sourceExplorer = CHAIN_INFO[record.sourceChain]?.explorer;
@@ -70,19 +80,28 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
   const isRecipe = !!record.recipeId;
   const canReclaim = record.status === "pending" && !!record.burnTxHash && !!record.reclaimable;
 
+  // Approach C: route batch reclaims to /batch, single-tx to /bridge
+  const reclaimHref = canReclaim ? getReclaimRoute(record, isBatch) : "";
+
   return (
     <div className={`rounded-lg border bg-zinc-950/50 overflow-hidden ${
       canReclaim
         ? "border-amber-500/30"
         : isRecipe
         ? "border-purple-500/20"
+        : isBatch
+        ? "border-cyan-500/20"
         : "border-zinc-800"
     }`}>
       {/* Reclaim banner (if reclaimable) */}
       {canReclaim && (
         <div className="px-3 py-1.5 bg-gradient-to-r from-amber-500/[0.10] to-orange-500/[0.06] border-b border-amber-500/15 flex items-center gap-2 text-[11px]">
           <span className="text-amber-400">🔄</span>
-          <span className="text-amber-300 font-medium">Reclaimable burn — burn confirmed but mint not yet executed</span>
+          <span className="text-amber-300 font-medium">
+            {isBatch
+              ? "Batch leg reclaimable — burn confirmed but mint not yet executed"
+              : "Reclaimable burn — burn confirmed but mint not yet executed"}
+          </span>
         </div>
       )}
       {/* Recipe context header (if applicable) */}
@@ -95,6 +114,18 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
           {record.recipeOutputIndex !== undefined && record.recipeTotalOutputs !== undefined && (
             <span className="text-zinc-500 shrink-0">
               · output {record.recipeOutputIndex + 1} of {record.recipeTotalOutputs}
+            </span>
+          )}
+        </div>
+      )}
+      {/* Batch context header (if applicable, no recipe) */}
+      {isBatch && !isRecipe && (
+        <div className="px-3 py-1.5 bg-gradient-to-r from-cyan-500/[0.08] to-blue-500/[0.05] border-b border-cyan-500/10 flex items-center gap-2 text-[11px]">
+          <span className="text-cyan-400">🔀</span>
+          <span className="text-cyan-300 font-medium">Batch leg</span>
+          {record.burnTxHash && (
+            <span className="text-zinc-500 shrink-0 font-mono">
+              · {record.burnTxHash.slice(0, 8)}…
             </span>
           )}
         </div>
@@ -222,13 +253,21 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
           {canReclaim && (
             <div className="pt-2 border-t border-zinc-800">
               <a
-                href={`/bridge?reclaim=${record.id}`}
-                className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-semibold py-2 px-4 text-xs transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30"
+                href={reclaimHref}
+                className={`inline-flex items-center gap-2 rounded-lg font-semibold py-2 px-4 text-xs transition-all shadow-lg ${
+                  isBatch
+                    ? "bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-zinc-950 shadow-cyan-500/20 hover:shadow-cyan-500/30"
+                    : "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 shadow-amber-500/20 hover:shadow-amber-500/30"
+                }`}
               >
-                🔄 Reclaim & mint on {CHAIN_INFO[record.destChain]?.name || `chain ${record.destChain}`}
+                {isBatch
+                  ? `🔀 Resume batch on ${CHAIN_INFO[record.destChain]?.name || `chain ${record.destChain}`}`
+                  : `🔄 Reclaim & mint on ${CHAIN_INFO[record.destChain]?.name || `chain ${record.destChain}`}`}
               </a>
               <p className="text-[10px] text-zinc-500 mt-1.5">
-                Burn happened on {CHAIN_INFO[record.sourceChain]?.name}, mint never ran. CCTP attestations are permanent — claim anytime.
+                {isBatch
+                  ? "Multi-leg batch — recovery view tracks all legs in parallel via Stage 8 attestation polling."
+                  : `Burn happened on ${CHAIN_INFO[record.sourceChain]?.name}, mint never ran. CCTP attestations are permanent — claim anytime.`}
               </p>
             </div>
           )}
@@ -238,7 +277,7 @@ function HistoryItem({ record }: { record: BridgeRecord }) {
   );
 }
 
-type FilterType = "all" | "complete" | "failed" | "recipes" | "reclaimable";
+type FilterType = "all" | "complete" | "failed" | "recipes" | "reclaimable" | "batches";
 
 export function BridgeHistory() {
   const { address, isConnected } = useAccount();
@@ -260,25 +299,48 @@ export function BridgeHistory() {
 
     refresh();
     window.addEventListener("bridge-history-updated", refresh);
-    return () => window.removeEventListener("bridge-history-updated", refresh);
+    window.addEventListener("lyxsa:bridge-history-updated", refresh);
+    return () => {
+      window.removeEventListener("bridge-history-updated", refresh);
+      window.removeEventListener("lyxsa:bridge-history-updated", refresh);
+    };
   }, [address]);
+
+  // Approach C: detect batch-classified records via shared burnTxHash
+  // O(N) build of "is this record part of a multi-leg batch?" lookup.
+  const batchTxHashes = useMemo(() => {
+    const groups = groupRecordsByBatchTx(history);
+    const set = new Set<string>();
+    for (const [txHash, group] of groups.entries()) {
+      if (group.legs.length > 1) set.add(txHash);
+    }
+    return set;
+  }, [history]);
+
+  const isBatchLeg = (record: BridgeRecord): boolean => {
+    return !!record.burnTxHash && batchTxHashes.has(record.burnTxHash);
+  };
 
   const filtered = useMemo(() => {
     if (filter === "all") return history;
     if (filter === "recipes") return history.filter((r) => !!r.recipeId);
+    if (filter === "batches") return history.filter((r) => isBatchLeg(r));
     if (filter === "reclaimable")
       return history.filter((r) => r.status === "pending" && !!r.burnTxHash && !!r.reclaimable);
     return history.filter((r) => r.status === filter);
-  }, [history, filter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, filter, batchTxHashes]);
 
   const stats = useMemo(() => {
     const total = history.length;
     const complete = history.filter((r) => r.status === "complete").length;
     const failed = history.filter((r) => r.status === "failed").length;
     const recipes = history.filter((r) => !!r.recipeId).length;
+    const batches = history.filter((r) => isBatchLeg(r)).length;
     const reclaimable = history.filter((r) => r.status === "pending" && !!r.burnTxHash && !!r.reclaimable).length;
-    return { total, complete, failed, recipes, reclaimable };
-  }, [history]);
+    return { total, complete, failed, recipes, batches, reclaimable };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, batchTxHashes]);
 
   const handleClear = () => {
     if (!address) return;
@@ -318,7 +380,7 @@ export function BridgeHistory() {
       {/* Filter tabs */}
       {history.length > 0 && (
         <div className="flex gap-2 text-xs flex-wrap">
-          {(["all", "complete", "failed", "recipes", "reclaimable"] as FilterType[]).map((f) => {
+          {(["all", "complete", "failed", "recipes", "batches", "reclaimable"] as FilterType[]).map((f) => {
             const count =
               f === "all"
                 ? stats.total
@@ -328,9 +390,13 @@ export function BridgeHistory() {
                 ? stats.failed
                 : f === "recipes"
                 ? stats.recipes
+                : f === "batches"
+                ? stats.batches
                 : stats.reclaimable;
             // Hide "recipes" tab if no recipe runs yet
             if (f === "recipes" && stats.recipes === 0) return null;
+            // Hide "batches" tab if no batch runs yet
+            if (f === "batches" && stats.batches === 0) return null;
             // Hide "reclaimable" tab if no reclaimable bridges
             if (f === "reclaimable" && stats.reclaimable === 0) return null;
             return (
@@ -341,13 +407,22 @@ export function BridgeHistory() {
                   filter === f
                     ? f === "recipes"
                       ? "border-purple-500/50 bg-purple-500/10 text-purple-300"
+                      : f === "batches"
+                      ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
                       : f === "reclaimable"
                       ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
                       : "border-cyan-500/50 bg-cyan-500/10 text-cyan-400"
                     : "border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200"
                 }`}
               >
-                {f === "recipes" ? "🍳 Recipes" : f === "reclaimable" ? "🔄 Reclaimable" : f} ({count})
+                {f === "recipes"
+                  ? "🍳 Recipes"
+                  : f === "batches"
+                  ? "🔀 Batches"
+                  : f === "reclaimable"
+                  ? "🔄 Reclaimable"
+                  : f}{" "}
+                ({count})
               </button>
             );
           })}
@@ -386,7 +461,11 @@ export function BridgeHistory() {
       {filtered.length > 0 && (
         <div className="space-y-2">
           {filtered.map((record) => (
-            <HistoryItem key={record.id} record={record} />
+            <HistoryItem
+              key={record.id}
+              record={record}
+              isBatch={isBatchLeg(record)}
+            />
           ))}
         </div>
       )}
