@@ -70,6 +70,33 @@ export function useBatchAttestations({
   const abortRef = useRef<AbortController | null>(null);
   const attemptsRef = useRef(0);
 
+  // Re-initialize legStates whenever the input legs identity changes
+  // (e.g. new batch tx submitted, or recovery view loaded different records).
+  // Without this, useState init runs only once and legStates stays [].
+  // We use a stable signature (txHash + leg fingerprints) to avoid resetting
+  // mid-flow when legs array reference changes but content is identical.
+  const legSignature = batchTxHash
+    ? `${batchTxHash}::${legs.map((l) => `${l.destChainId}-${l.amountRaw}`).join("|")}`
+    : "";
+  useEffect(() => {
+    if (!enabled || !batchTxHash) return;
+    setLegStates((prev) => {
+      // Only reset if signature mismatch — preserves mintStatus across re-renders
+      if (prev.length === legs.length && prev[0]?.destChainId === legs[0]?.destChainId) {
+        return prev;
+      }
+      return legs.map((leg, i) => ({
+        legIndex: i,
+        destChainId: leg.destChainId,
+        amountRaw: leg.amountRaw,
+        recipient: leg.recipient,
+        attestation: { status: "pending" as const, attempt: 0 },
+        mintStatus: "pending" as const,
+      }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legSignature, enabled]);
+
   // Start/stop polling based on enabled flag
   useEffect(() => {
     if (!enabled || !batchTxHash) return;

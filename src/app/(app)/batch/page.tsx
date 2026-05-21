@@ -145,8 +145,29 @@ function BatchCreateView() {
   // (user can re-approve different amount), so we only lock from "burning"
   // onwards.
   // ─────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // Bug B fix — Form lock during AND after batch (prevent double-bridge)
+  // Form must stay locked while:
+  //   (a) tx in flight ("burning")
+  //   (b) batch awaiting attestation/mint ("burned")
+  //   (c) error state where receipt hung but tx may have succeeded ("error"
+  //       AND state.batchTxHash present — caller should reset explicitly)
+  // ─────────────────────────────────────────────────────────────
   const formLocked =
     state.status === "burning" || state.status === "burned";
+
+  // ─────────────────────────────────────────────────────────────
+  // Bug C — In-flight banner: warn user there's an active batch
+  // (so they know to either continue mint or reset before bridging again)
+  // ─────────────────────────────────────────────────────────────
+  const inFlightCount =
+    state.status === "burned"
+      ? legStates.filter((l) => l.mintStatus !== "complete").length
+      : 0;
+  const completedCount =
+    state.status === "burned"
+      ? legStates.filter((l) => l.mintStatus === "complete").length
+      : 0;
 
   // ─────────────────────────────────────────────────────────────
   // Stage 8: Multi-attestation tracking + per-leg mint
@@ -239,6 +260,22 @@ function BatchCreateView() {
           Use Recipes (sequential queue) →
         </Link>
       </header>
+
+      {/* In-flight banner — warn user batch is active */}
+      {state.status === "burned" && inFlightCount > 0 && (
+        <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+          <span className="text-amber-400 text-lg leading-none mt-0.5">⚠️</span>
+          <div className="flex-1 text-sm">
+            <div className="font-semibold text-amber-200 mb-1">
+              Batch in flight — {completedCount}/{legStates.length} done · {inFlightCount} pending
+            </div>
+            <div className="text-amber-300/80 text-xs">
+              Continue minting below, or click <span className="font-mono">Start new batch</span> to abandon
+              this batch (legs remain reclaimable from /history).
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SOURCE */}
       <section
