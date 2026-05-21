@@ -347,28 +347,28 @@ function RoadmapSection() {
           tone="future"
           status="⏳ COMING SOON"
           num="05"
-          title="Multi-aggregator + swap"
-          eta="Q4 2026 · planned"
-          features={[
-            "Across, Relay, LiFi quote comparison",
-            "USDC ↔ USDT/ETH swap (1inch SDK)",
-            "Best-price routing engine",
-            "Slippage controls",
-            "Cross-chain swap (bridge + swap chained)",
-          ]}
-        />
-        <PhaseCard
-          tone="future"
-          status="⏳ COMING SOON"
-          num="06"
           title="Move VM expansion"
-          eta="2027 · planned"
+          eta="Q4 2026 · planned"
           features={[
             "Aptos integration via CCTP V2",
             "Sui integration via CCTP V2",
             "Move-native USDC support",
             "Petra + Sui wallet adapters",
             "Cross-VM consolidation: EVM ↔ SVM ↔ Move",
+          ]}
+        />
+        <PhaseCard
+          tone="future"
+          status="⏳ COMING SOON"
+          num="06"
+          title="Multi-aggregator + swap"
+          eta="2027 · planned"
+          features={[
+            "Across, Relay, LiFi quote comparison",
+            "USDC ↔ USDT/ETH swap (1inch SDK)",
+            "Best-price routing engine",
+            "Slippage controls",
+            "Cross-chain swap (bridge + swap chained)",
           ]}
         />
       </div>

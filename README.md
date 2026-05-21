@@ -53,8 +53,8 @@ Native USDC bridging in 30 seconds across 22 EVM testnets + Solana Devnet, plus 
 | 02 | Solana cross-VM integration | ✅ LIVE | Q2 2026 |
 | 03 | Recipes & batching (sequential queue) | ✅ LIVE Beta | Q2 2026 |
 | 04 | Batch bridge (atomic fan-out splitter) | 🟡 IN PROGRESS | Q3 2026 |
-| 05 | Move VM expansion (Aptos + Sui) | ⏳ PLANNED | 2027 |
-| 06 | Cross-VM batch + Account Abstraction | ⏳ PLANNED | 2027 |
+| 05 | Move VM expansion (Aptos + Sui) | ⏳ PLANNED | Q4 2026 |
+| 06 | Multi-aggregator + swap | ⏳ PLANNED | 2027 |
 
 ---
 
