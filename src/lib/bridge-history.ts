@@ -145,8 +145,11 @@ export function groupRecordsByBatchTx(
   records: BridgeRecord[],
 ): Map<`0x${string}`, BatchGroup> {
   const groups = new Map<`0x${string}`, BatchGroup>();
+  // Defensive guard — caller can mistakenly pass undefined/null/non-array
+  // (e.g. corrupt localStorage that survived schema migration).
+  if (!Array.isArray(records)) return groups;
   for (const r of records) {
-    if (!r.burnTxHash) continue;
+    if (!r || !r.burnTxHash) continue;
     const existing = groups.get(r.burnTxHash);
     if (existing) {
       existing.legs.push(r);
@@ -180,8 +183,9 @@ export function isBatchRecord(
   allRecords: BridgeRecord[],
 ): boolean {
   if (!record.burnTxHash) return false;
+  if (!Array.isArray(allRecords)) return false;
   const sameTxCount = allRecords.filter(
-    (r) => r.burnTxHash === record.burnTxHash,
+    (r) => r && r.burnTxHash === record.burnTxHash,
   ).length;
   return sameTxCount >= 2;
 }
@@ -194,7 +198,8 @@ export function findBatchSiblings(
   burnTxHash: `0x${string}`,
   allRecords: BridgeRecord[],
 ): BridgeRecord[] {
-  return allRecords.filter((r) => r.burnTxHash === burnTxHash);
+  if (!Array.isArray(allRecords)) return [];
+  return allRecords.filter((r) => r && r.burnTxHash === burnTxHash);
 }
 
 /**
