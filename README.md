@@ -36,12 +36,13 @@ Native USDC bridging in 30 seconds across 22 EVM testnets + Solana Devnet, plus 
 - Reclaim anytime — CCTP V2 attestations are permanent
 - No silent USDC loss
 
-### ⚡ Batch Bridge — Phase 4 IN PROGRESS
+### ⚡ Batch Bridge — LIVE (Beta)
 
-- **LyxsaSplitter.sol** — atomic fan-out splitter contract
+- **LyxsaSplitter.sol** — atomic fan-out splitter contract deployed on 4 testnets
 - Bridge USDC from 1 source to up to 5 destinations in a single transaction
-- Single approve + single batch tx
-- Coming Q3 2026 — preview at `/batch`
+- Single approve + single batch tx + per-leg parallel attestation tracking
+- 25 tests passing · Slither audit clean · CREATE2 deterministic
+- Try it at `/batch`
 
 ---
 
@@ -52,7 +53,7 @@ Native USDC bridging in 30 seconds across 22 EVM testnets + Solana Devnet, plus 
 | 01 | Native USDC bridging (22 EVM) | ✅ LIVE | Q2 2026 |
 | 02 | Solana cross-VM integration | ✅ LIVE | Q2 2026 |
 | 03 | Recipes & batching (sequential queue) | ✅ LIVE Beta | Q2 2026 |
-| 04 | Batch bridge (atomic fan-out splitter) | 🟡 IN PROGRESS | Q3 2026 |
+| 04 | Batch bridge (atomic fan-out splitter) | ✅ LIVE Beta | Q2 2026 |
 | 05 | Move VM expansion (Aptos + Sui) | ⏳ PLANNED | Q4 2026 |
 | 06 | Multi-aggregator + swap | ⏳ PLANNED | 2027 |
 
@@ -108,9 +109,22 @@ Deploy your own instance to Cloudflare Workers (or Vercel):
 
 ---
 
-## 🔗 Integrated CCTP V2 Contracts
+## 🔗 Deployed Contracts
 
-Lyxsa is a frontend dApp integrating Circle CCTP V2 protocol contracts. **No custom contracts deployed yet** (Phase 4 LyxsaSplitter.sol coming).
+### LyxsaSplitter (Phase 4 — fan-out batch bridge)
+
+CREATE2 deterministic deploy. Bridge USDC from 1 source to up to 5 destinations atomically.
+
+| Chain | Contract Address | Explorer |
+|-------|-----------------|----------|
+| Sepolia | `0x8806AE628C9580Ec147B49D54a6731A2E815647C` | [Etherscan ✓ Verified](https://sepolia.etherscan.io/address/0x8806AE628C9580Ec147B49D54a6731A2E815647C) |
+| Base Sepolia | `0xC5C77a0f41326764ABCa14737e074e78099A8915` | [Basescan ✓ Verified](https://sepolia.basescan.org/address/0xC5C77a0f41326764ABCa14737e074e78099A8915) |
+| Arbitrum Sepolia | `0x6c85f0F146FF195836C6E10f50b09D57F68ee300` | [Arbiscan ✓ Verified](https://sepolia.arbiscan.io/address/0x6c85f0F146FF195836C6E10f50b09D57F68ee300) |
+| Arc Testnet | `0x1E287e9BDD9BF20131F39DAca09c689C08C2365E` | [Arcscan](https://testnet.arcscan.app/address/0x1E287e9BDD9BF20131F39DAca09c689C08C2365E) |
+
+Source code: [`contracts/lyxsa-contracts/`](contracts/lyxsa-contracts/) · Tests: 25 passing · Slither: clean
+
+### Integrated CCTP V2 Protocol Contracts
 
 **Arc Testnet (chain ID 5042002, CCTP domain 26):**
 - TokenMessenger: `0x8FE6B999Dc680CcFDD5Bf7EB0974218be2542DAA`

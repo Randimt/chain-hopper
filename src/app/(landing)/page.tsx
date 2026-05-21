@@ -330,16 +330,16 @@ function RoadmapSection() {
           ]}
         />
         <PhaseCard
-          tone="progress"
-          status="⚙ IN PROGRESS"
+          tone="live"
+          status="LIVE NOW"
           num="04"
           title="Batch bridge — fan-out splitter"
-          eta="Q3 2026 · in development"
+          eta="Q2 2026 · shipped (Beta)"
           features={[
-            "Custom LyxsaSplitter contract on 22 EVM chains",
+            "LyxsaSplitter contract deployed on 4 testnets (verified)",
             "1 USDC source → up to 5 destinations atomically",
             "Single approve + single signature batch tx",
-            "Multi-attestation parallel tracking",
+            "Multi-attestation parallel tracking + per-leg mint",
             "Native USDC (CCTP V2) — no wrapped tokens",
           ]}
         />

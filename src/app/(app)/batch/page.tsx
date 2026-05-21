@@ -347,7 +347,7 @@ export default function BatchPage() {
       </section>
 
       <div className="mt-8 text-xs text-zinc-600 text-center">
-        Phase 4 Beta · LyxsaSplitter deployed on 4 testnets · Stage 7/9
+        Phase 4 LIVE · LyxsaSplitter deployed on 4 testnets · 25 tests · Slither clean
       </div>
     </div>
   );
