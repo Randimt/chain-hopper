@@ -193,29 +193,11 @@ export function useBatchBridge() {
           account: address,
         });
 
-        const receipt = await publicClient.waitForTransactionReceipt({
-          hash: txHash,
-          timeout: 180_000,
-          pollingInterval: 2_000,
-        });
-
-        // Extract MessageSent events from CCTP MessageTransmitter
-        // Each leg emits exactly one MessageSent — we order by log position
-        const messageHashes: Hex[] = receipt.logs
-          .filter((log) => log.topics[0] === MESSAGE_SENT_TOPIC)
-          .map((log) => log.data as Hex);
-
-        if (messageHashes.length !== outputs.length) {
-          // soft warning — proceed anyway with what we have
-          console.warn(
-            `Expected ${outputs.length} MessageSent events, got ${messageHashes.length}`,
-          );
-        }
-
         // ─────────────────────────────────────────────────────────────
-        // Save 1 BridgeRecord per leg as reclaimable (status="pending").
-        // Stage 8 will polish: claim flow + parse messageBytes + auto-mint.
-        // For now, user has full record + can manually claim via /history.
+        // SAVE RECORDS IMMEDIATELY (before receipt) — recovery path.
+        // If receipt polling times out due to slow RPC, user still has
+        // full records in /history with txHash + reclaimable flag.
+        // Funds are SAFE on-chain even if frontend hangs.
         // ─────────────────────────────────────────────────────────────
         const startedAt = Date.now();
         const recordIds: string[] = [];
@@ -228,7 +210,6 @@ export function useBatchBridge() {
             provider: "cctp",
             sourceChain,
             destChain: out.destChainId,
-            // amount in USDC display units (6 decimals), as string
             amount: (Number(out.amountRaw) / 1_000_000).toString(),
             status: "pending",
             burnTxHash: txHash,
@@ -240,15 +221,43 @@ export function useBatchBridge() {
           try {
             addBridgeRecord(address!, record);
           } catch (e) {
-            // localStorage failure shouldn't block the rest of the batch
             console.error("[batch] Failed to save record", i, e);
           }
         }
-        // Notify other components (history page) that records changed
         try {
           window.dispatchEvent(new CustomEvent("lyxsa:bridge-history-updated"));
         } catch {
-          /* SSR or non-browser */
+          /* SSR */
+        }
+
+        // Receipt polling with longer timeout + graceful degradation.
+        // If receipt fails, transition to "burned" state anyway since
+        // tx is on-chain (records already saved, user can verify on explorer).
+        let messageHashes: Hex[] = [];
+        try {
+          const receipt = await publicClient.waitForTransactionReceipt({
+            hash: txHash,
+            timeout: 240_000, // 4 min — gives slow RPCs more breathing room
+            pollingInterval: 3_000,
+          });
+
+          messageHashes = receipt.logs
+            .filter((log) => log.topics[0] === MESSAGE_SENT_TOPIC)
+            .map((log) => log.data as Hex);
+
+          if (messageHashes.length !== outputs.length) {
+            console.warn(
+              `Expected ${outputs.length} MessageSent events, got ${messageHashes.length}`,
+            );
+          }
+        } catch (receiptErr) {
+          // Receipt timeout: tx likely succeeded but RPC is desynced.
+          // Move to "burned" state with empty messageHashes — useBatchAttestations
+          // will fetch them via Iris API by tx hash directly.
+          console.warn(
+            "[batch] Receipt polling timed out, proceeding with Iris fallback",
+            receiptErr,
+          );
         }
 
         setState({
