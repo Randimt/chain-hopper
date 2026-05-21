@@ -15,6 +15,11 @@ import {
 } from "@/lib/lyxsa-splitter";
 import { CCTP_DOMAINS } from "@/lib/cctp";
 import { useBatchBridge, type BatchOutput } from "@/hooks/useBatchBridge";
+import {
+  useBatchAttestations,
+  useBatchLegMint,
+  type LegState,
+} from "@/hooks/useBatchAttestations";
 
 /**
  * Phase 4 — Batch Bridge MVP
@@ -99,6 +104,33 @@ export default function BatchPage() {
   // ─────────────────────────────────────────────────────────────
   const formLocked =
     state.status === "burning" || state.status === "burned";
+
+  // ─────────────────────────────────────────────────────────────
+  // Stage 8: Multi-attestation tracking + per-leg mint
+  // Pulls legs from state.legs after successful batchBurn,
+  // polls Iris API in parallel, exposes per-leg mintLeg() handler.
+  // ─────────────────────────────────────────────────────────────
+  const burnedLegs =
+    state.status === "burned"
+      ? state.legs.map((l) => ({
+          destChainId: l.destChainId,
+          amountRaw: l.amountRaw,
+          recipient: l.recipient,
+        }))
+      : [];
+
+  const { legStates, setLegStates } = useBatchAttestations({
+    sourceChain,
+    batchTxHash: state.status === "burned" ? state.batchTxHash : undefined,
+    legs: burnedLegs,
+    enabled: state.status === "burned",
+  });
+
+  const { mintLeg } = useBatchLegMint(
+    legStates,
+    setLegStates,
+    state.status === "burned" ? state.batchTxHash : undefined,
+  );
 
   // ─────────────────────────────────────────────────────────────
   // Handlers
@@ -292,32 +324,12 @@ export default function BatchPage() {
           </div>
         )}
         {state.status === "burned" && (
-          <div className="text-xs bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4 space-y-2">
-            <div className="font-semibold text-cyan-300">
-              ✓ Batch submitted! {state.legs.length} burns broadcast.
-            </div>
-            <div className="text-zinc-400 font-mono text-[11px] truncate">
-              tx: {state.batchTxHash}
-            </div>
-            <div className="text-zinc-300 mt-2">
-              <strong className="text-amber-300">Saved {state.recordIds.length} records to History as Reclaimable.</strong>
-              {" "}USDC will arrive at destinations via CCTP V2 attestation flow (~30s per leg).
-            </div>
-            <div className="text-zinc-500 mt-1">
-              Stage 8 will add automated mint UX. For now, claim each output via{" "}
-              <Link href="/history" className="text-cyan-400 hover:text-cyan-300 underline">
-                /history
-              </Link>{" "}
-              once attestation is ready.
-            </div>
-            <button
-              type="button"
-              onClick={reset}
-              className="text-xs text-cyan-400 hover:text-cyan-300 mt-2"
-            >
-              Start new batch →
-            </button>
-          </div>
+          <BatchProgress
+            batchTxHash={state.batchTxHash}
+            legStates={legStates}
+            onMintLeg={mintLeg}
+            onReset={reset}
+          />
         )}
         {state.status === "error" && (
           <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-lg p-3">
@@ -350,6 +362,129 @@ type OutputDraft = {
   destChainId: number;
   amountStr: string;
 };
+
+/**
+ * Stage 8 — Multi-attestation progress + per-leg mint UI.
+ * Shows live polling state per leg, "Mint" button when attestation ready.
+ */
+function BatchProgress({
+  batchTxHash,
+  legStates,
+  onMintLeg,
+  onReset,
+}: {
+  batchTxHash: `0x${string}`;
+  legStates: LegState[];
+  onMintLeg: (legIndex: number) => void;
+  onReset: () => void;
+}) {
+  const completeCount = legStates.filter((l) => l.mintStatus === "complete").length;
+  const readyCount = legStates.filter((l) => l.mintStatus === "ready").length;
+  const allComplete = completeCount === legStates.length && legStates.length > 0;
+
+  return (
+    <div className="text-xs bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="font-semibold text-cyan-300">
+          {allComplete
+            ? `✓ All ${legStates.length} bridges complete`
+            : `Batch in flight · ${completeCount}/${legStates.length} done · ${readyCount} ready to mint`}
+        </div>
+        <span className="text-[10px] font-mono text-zinc-500">
+          {batchTxHash.slice(0, 8)}...{batchTxHash.slice(-6)}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {legStates.map((leg) => (
+          <LegRow key={leg.legIndex} leg={leg} onMint={() => onMintLeg(leg.legIndex)} />
+        ))}
+      </div>
+
+      {allComplete && (
+        <div className="pt-2 mt-2 border-t border-white/5 text-zinc-400">
+          🎉 All {legStates.length} legs minted. USDC arrived on destination chains.
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onReset}
+        className="text-xs text-cyan-400 hover:text-cyan-300 underline"
+      >
+        Start new batch →
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Single leg progress row — chain badge, status, optional mint button.
+ */
+function LegRow({ leg, onMint }: { leg: LegState; onMint: () => void }) {
+  const chainName = CHAIN_INFO[leg.destChainId]?.name ?? `Chain ${leg.destChainId}`;
+  const amount = (Number(leg.amountRaw) / 1_000_000).toString();
+
+  let statusLabel: string;
+  let statusColor: string;
+  switch (leg.mintStatus) {
+    case "pending":
+      statusLabel = "Waiting attestation...";
+      statusColor = "text-amber-400";
+      break;
+    case "ready":
+      statusLabel = "Attestation ready";
+      statusColor = "text-emerald-400";
+      break;
+    case "minting":
+      statusLabel = "Minting...";
+      statusColor = "text-cyan-400";
+      break;
+    case "complete":
+      statusLabel = "✓ Complete";
+      statusColor = "text-emerald-400";
+      break;
+    case "error":
+      statusLabel = leg.errorMessage ?? "Error";
+      statusColor = "text-rose-400";
+      break;
+  }
+
+  return (
+    <div className="flex items-center justify-between bg-black/30 border border-white/5 rounded-md px-3 py-2.5">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-zinc-200">{chainName}</span>
+          <span className="font-mono text-[11px] text-zinc-500">{amount} USDC</span>
+        </div>
+        <div className={`text-[11px] mt-0.5 ${statusColor}`}>{statusLabel}</div>
+        {leg.mintTxHash && (
+          <div className="text-[10px] font-mono text-zinc-600 mt-0.5 truncate">
+            mint: {leg.mintTxHash.slice(0, 12)}...
+          </div>
+        )}
+      </div>
+      {leg.mintStatus === "ready" && (
+        <button
+          type="button"
+          onClick={onMint}
+          className="text-xs px-3 py-1.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors font-semibold"
+        >
+          Mint
+        </button>
+      )}
+      {leg.mintStatus === "error" && (
+        <button
+          type="button"
+          onClick={onMint}
+          className="text-xs px-3 py-1.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25 transition-colors"
+        >
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Source picker filtered to chains where LyxsaSplitter is actually deployed.

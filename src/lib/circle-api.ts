@@ -124,6 +124,50 @@ export async function pollAttestation(
   }
 
   throw new Error(
-    "Attestation timeout (20 min). You can claim manually later from the same wallet."
+    "Attestation timeout (20 min). You can claim manually later from the same wallet.",
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Stage 8 — Multi-attestation tracking for Phase 4 batch bridge.
+// 1 batch tx → N MessageSent events → N attestations to track in parallel.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type LegAttestation =
+  | { status: "pending"; attempt: number }
+  | { status: "complete"; message: `0x${string}`; attestation: `0x${string}` }
+  | { status: "error"; error: string };
+
+/**
+ * Single fetch (no polling) to get current state of all attestations
+ * for a batch tx. Used by hook to drive parallel polling per leg.
+ */
+export async function fetchBatchAttestations(
+  sourceDomain: number,
+  batchTxHash: `0x${string}`,
+  expectedCount: number,
+  signal?: AbortSignal,
+): Promise<LegAttestation[]> {
+  const result = await fetchIris(sourceDomain, batchTxHash, signal, false);
+  if (!result.ok || !result.data) {
+    return Array(expectedCount).fill({
+      status: "pending",
+      attempt: 0,
+    } as LegAttestation);
+  }
+  const messages = result.data.messages ?? [];
+  const slots: LegAttestation[] = [];
+  for (let i = 0; i < expectedCount; i++) {
+    const m = messages[i];
+    if (m?.status === "complete" && m.message && m.attestation) {
+      slots.push({
+        status: "complete",
+        message: m.message as `0x${string}`,
+        attestation: m.attestation as `0x${string}`,
+      });
+    } else {
+      slots.push({ status: "pending", attempt: 0 });
+    }
+  }
+  return slots;
 }
