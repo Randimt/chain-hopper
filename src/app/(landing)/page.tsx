@@ -450,7 +450,7 @@ function FeaturesSection() {
   return (
     <section id="features" className="relative z-[5] px-6 sm:px-8 py-24 md:py-32 max-w-6xl mx-auto border-t border-white/5">
       <div className="font-mono text-xs text-cyan-500 uppercase tracking-[0.2em] mb-3.5 before:content-['//_']">
-        why plix
+        why lyxsa
       </div>
       <h2 className="text-[clamp(36px,5vw,64px)] font-bold tracking-tight mb-12 max-w-3xl leading-[1.05]">
         Built for the{" "}
