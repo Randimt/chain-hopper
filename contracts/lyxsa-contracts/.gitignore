@@ -1,0 +1,27 @@
+# Foundry build artifacts
+out/
+cache/
+broadcast/
+*.swp
+*.swo
+
+# Foundry dependencies (re-install with `forge install`)
+lib/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+lcov.info
+coverage/
