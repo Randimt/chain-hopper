@@ -517,22 +517,33 @@ export function BridgeForm() {
     }
   }, [state.status, solanaReceiveReset]);
 
-  // ============ Circle Bridge Kit toast tracking (EVM → Solana) ============
+  // ============ Circle Bridge Kit toast tracking + history (cross-VM) ============
   const prevCircleStatusRef = useRef<string>("idle");
+  const circleRecordIdRef = useRef<string | null>(null);
+  const circleStartedAtRef = useRef<number>(0);
   useEffect(() => {
     const prev = prevCircleStatusRef.current;
     const curr = circleBridge.status;
     if (prev !== curr) {
       if (curr === "preparing") {
         toast.loading("Preparing cross-chain bridge...", { id: "circle-bridge" });
+        // Initialize record at preparing stage so we have it ready for any failure
+        if (!circleRecordIdRef.current) {
+          circleRecordIdRef.current = generateBridgeId();
+          circleStartedAtRef.current = Date.now();
+        }
       }
       if (curr === "bridging") {
         toast.loading("Bridge in progress — sign prompts in both wallets", {
           id: "circle-bridge",
         });
+        if (!circleRecordIdRef.current) {
+          circleRecordIdRef.current = generateBridgeId();
+          circleStartedAtRef.current = Date.now();
+        }
       }
       if (curr === "complete") {
-        toast.success("Bridge complete — USDC delivered to Solana", {
+        toast.success("Bridge complete — USDC delivered", {
           id: "circle-bridge",
         });
         // Mark recipe run if active (only once per run)
@@ -541,15 +552,108 @@ export function BridgeForm() {
           recipeRunMarkedRef.current = true;
         }
         if (address) clearPendingBridge(address);
+        // Save complete record to history
+        if (address && circleRecordIdRef.current) {
+          const sourceIsSolana = sourceChain === SOLANA_DEVNET_CHAIN_ID;
+          const destIsSolana = destChain === SOLANA_DEVNET_CHAIN_ID;
+          const burnStep = circleBridge.steps.find((s) =>
+            s.name.toLowerCase().includes("burn") ||
+            s.name.toLowerCase().includes("source")
+          );
+          const mintStep = circleBridge.steps.find((s) =>
+            s.name.toLowerCase().includes("mint") ||
+            s.name.toLowerCase().includes("dest") ||
+            s.name.toLowerCase().includes("receive")
+          );
+          const record: BridgeRecord = {
+            id: circleRecordIdRef.current,
+            provider: "cctp",
+            sourceChain,
+            destChain,
+            amount,
+            status: "complete",
+            burnTxHash: burnStep?.txHash,
+            mintTxHash: mintStep?.txHash,
+            startedAt: circleStartedAtRef.current,
+            completedAt: Date.now(),
+            ...(destIsSolana && solanaPublicKey && { solanaRecipient: solanaPublicKey.toBase58() }),
+            ...(sourceIsSolana && solanaPublicKey && { solanaRecipient: solanaPublicKey.toBase58() }),
+            ...(activeRecipeId && {
+              recipeId: activeRecipeId,
+              recipeName: activeRecipeName ?? undefined,
+              recipeOutputIndex: activeQueue?.currentIndex,
+              recipeTotalOutputs: activeQueue?.outputs.length,
+            }),
+          };
+          addBridgeRecord(address, record);
+          window.dispatchEvent(new Event("bridge-history-updated"));
+          circleRecordIdRef.current = null;
+        }
         // Advance queue if multi-output recipe in progress
         if (activeQueue) advanceQueueAndRedirect();
       }
       if (curr === "error") {
         toast.error(circleBridge.error ?? "Bridge failed", { id: "circle-bridge" });
+        // Save failed record with reclaimable flag if any tx happened
+        if (address && circleRecordIdRef.current) {
+          const sourceIsSolana = sourceChain === SOLANA_DEVNET_CHAIN_ID;
+          const destIsSolana = destChain === SOLANA_DEVNET_CHAIN_ID;
+          const burnStep = circleBridge.steps.find((s) =>
+            s.name.toLowerCase().includes("burn") ||
+            s.name.toLowerCase().includes("source")
+          );
+          const burnSucceeded = burnStep?.state === "success" && burnStep.txHash;
+          const record: BridgeRecord = {
+            id: circleRecordIdRef.current,
+            provider: "cctp",
+            sourceChain,
+            destChain,
+            amount,
+            // If burn succeeded but mint didn't, mark as pending+reclaimable
+            // Otherwise mark as failed (no funds at risk)
+            status: burnSucceeded ? "pending" : "failed",
+            reclaimable: burnSucceeded ? true : undefined,
+            burnTxHash: burnStep?.txHash,
+            startedAt: circleStartedAtRef.current,
+            completedAt: Date.now(),
+            errorMessage: circleBridge.error,
+            ...(destIsSolana && solanaPublicKey && { solanaRecipient: solanaPublicKey.toBase58() }),
+            ...(sourceIsSolana && solanaPublicKey && { solanaRecipient: solanaPublicKey.toBase58() }),
+            ...(activeRecipeId && {
+              recipeId: activeRecipeId,
+              recipeName: activeRecipeName ?? undefined,
+              recipeOutputIndex: activeQueue?.currentIndex,
+              recipeTotalOutputs: activeQueue?.outputs.length,
+            }),
+          };
+          addBridgeRecord(address, record);
+          window.dispatchEvent(new Event("bridge-history-updated"));
+          circleRecordIdRef.current = null;
+          if (burnSucceeded) {
+            toast(
+              "💡 Source tx succeeded but destination failed — saved to History as Reclaimable",
+              { duration: 8000 }
+            );
+          }
+        }
       }
     }
     prevCircleStatusRef.current = curr;
-  }, [circleBridge.status, circleBridge.error, address]);
+  }, [
+    circleBridge.status,
+    circleBridge.error,
+    circleBridge.steps,
+    address,
+    sourceChain,
+    destChain,
+    amount,
+    activeRecipeId,
+    activeRecipeName,
+    activeQueue,
+    markRun,
+    advanceQueueAndRedirect,
+    solanaPublicKey,
+  ]);
 
   // ============ CCTP toast / history tracking ============
   const prevStatusRef = useRef<string>("idle");
