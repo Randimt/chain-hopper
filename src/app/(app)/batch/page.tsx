@@ -157,19 +157,6 @@ function BatchCreateView() {
     state.status === "burning" || state.status === "burned";
 
   // ─────────────────────────────────────────────────────────────
-  // Bug C — In-flight banner: warn user there's an active batch
-  // (so they know to either continue mint or reset before bridging again)
-  // ─────────────────────────────────────────────────────────────
-  const inFlightCount =
-    state.status === "burned"
-      ? legStates.filter((l) => l.mintStatus !== "complete").length
-      : 0;
-  const completedCount =
-    state.status === "burned"
-      ? legStates.filter((l) => l.mintStatus === "complete").length
-      : 0;
-
-  // ─────────────────────────────────────────────────────────────
   // Stage 8: Multi-attestation tracking + per-leg mint
   // Pulls legs from state.legs after successful batchBurn,
   // polls Iris API in parallel, exposes per-leg mintLeg() handler.
@@ -195,6 +182,20 @@ function BatchCreateView() {
     setLegStates,
     state.status === "burned" ? state.batchTxHash : undefined,
   );
+
+  // ─────────────────────────────────────────────────────────────
+  // Bug C — In-flight banner: warn user there's an active batch
+  // (so they know to either continue mint or reset before bridging again)
+  // MUST be declared AFTER legStates to avoid TDZ in production minify.
+  // ─────────────────────────────────────────────────────────────
+  const inFlightCount =
+    state.status === "burned"
+      ? legStates.filter((l) => l.mintStatus !== "complete").length
+      : 0;
+  const completedCount =
+    state.status === "burned"
+      ? legStates.filter((l) => l.mintStatus === "complete").length
+      : 0;
 
   // ─────────────────────────────────────────────────────────────
   // Handlers
