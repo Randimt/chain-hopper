@@ -13,7 +13,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/bridge", label: "Bridge" },
   { href: "/recipes", label: "Recipes", beta: true },
-  { href: "/batch", label: "Batch", soon: true },
+  { href: "/batch", label: "Batch", beta: true },
   // { href: "/swap", label: "Swap", soon: true }, // Hidden until Phase 5 ships — preserve route at /swap
   { href: "/history", label: "History" },
 ];
