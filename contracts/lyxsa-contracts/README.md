@@ -97,8 +97,10 @@ script/
 | 2 | Foundry tests (21 tests) | ✅ |
 | 3 | Gas profile + Slither audit | ✅ |
 | 4 | CREATE2 deploy script | ✅ |
-| 5 | Sepolia deploy | ⏳ |
-| 6 | Multi-chain deploy (4 chains) | ⏳ |
+| 5 | Sepolia deploy + verified | ✅ |
+| 6 | Multi-chain deploy (4 chains) | ✅ |
 | 7 | Frontend `/batch` integration | ⏳ |
 | 8 | Multi-attestation tracking | ⏳ |
 | 9 | Polish + ship | ⏳ |
+
+See [DEPLOYMENTS.md](./DEPLOYMENTS.md) for live contract addresses across 4 testnets.
