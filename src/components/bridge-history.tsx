@@ -2,15 +2,15 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useAccount } from "wagmi";
+import { CHAIN_INFO } from "@/lib/wagmi";
 import {
   loadBridgeHistory,
   clearBridgeHistory,
   type BridgeRecord,
-  groupRecordsByBatchTx,
-  isBatchRecord,
-} from "@/lib/bridge-history";
   type BridgeStatus,
   type BatchGroup,
+  groupRecordsByBatchTx,
+  isBatchRecord,
 } from "@/lib/bridge-history";
 
 function shortHash(hash: `0x${string}`) {
