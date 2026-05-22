@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useAccount, useReadContract } from "wagmi";
+import { useAccount, useReadContract, useChainId, useSwitchChain } from "wagmi";
 import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 
 import { CHAIN_INFO, USDC_ADDRESSES } from "@/lib/wagmi";
@@ -111,6 +111,14 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
     setRecipeMeta({ id: recipe.id, name: recipe.name });
   }, [fromRecipeId, address]);
 
+  // Detect wallet chain mismatch — wagmi's useReadContract returns "0x" when
+  // wallet is on chain X but we query chain Y (USDC contract doesn't exist
+  // at the same address on the wallet's current network).
+  // Surface a switch-network prompt so user knows why allowance/balance fail.
+  const walletChainId = useChainId();
+  const { switchChain, isPending: isSwitchingChain } = useSwitchChain();
+  const chainMismatch = !!address && walletChainId !== sourceChain;
+
   // Source USDC balance
   const usdcAddress = USDC_ADDRESSES[sourceChain];
   const { data: balance, refetch: refetchBalance } = useReadContract({
@@ -119,7 +127,7 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     chainId: sourceChain,
-    query: { enabled: !!address && !!usdcAddress },
+    query: { enabled: !!address && !!usdcAddress && !chainMismatch },
   });
 
   // Splitter allowance check
@@ -130,7 +138,7 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
     functionName: "allowance",
     args: address && splitterAddr ? [address, splitterAddr] : undefined,
     chainId: sourceChain,
-    query: { enabled: !!address && !!usdcAddress && !!splitterAddr },
+    query: { enabled: !!address && !!usdcAddress && !!splitterAddr && !chainMismatch },
   });
 
   // After approve confirms (state.status === "approved"), wagmi cache is stale.
@@ -141,6 +149,16 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
       refetchBalance();
     }
   }, [state.status, refetchAllowance, refetchBalance]);
+
+  // Refetch balance + allowance after wallet network switch resolves.
+  // Without this, queries stay stale because they were disabled while
+  // chainMismatch was true.
+  useEffect(() => {
+    if (!chainMismatch && address && usdcAddress) {
+      refetchBalance();
+      refetchAllowance();
+    }
+  }, [chainMismatch, address, usdcAddress, refetchBalance, refetchAllowance]);
 
   // ─────────────────────────────────────────────────────────────
   // Derived state
@@ -300,6 +318,32 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
           {recipeMeta ? "← Back to Recipes" : "Browse Recipes →"}
         </Link>
       </header>
+
+      {/* Chain mismatch banner — wallet on different network than form source */}
+      {chainMismatch && (
+        <div className="mb-4 p-3 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-start gap-3">
+          <span className="text-cyan-400 text-lg leading-none mt-0.5">🔄</span>
+          <div className="flex-1 text-sm">
+            <div className="font-semibold text-cyan-200 mb-1">
+              Wallet on different network
+            </div>
+            <div className="text-cyan-300/80 text-xs mb-2">
+              Source is set to <span className="font-mono text-cyan-200">{CHAIN_INFO[sourceChain]?.name ?? `Chain ${sourceChain}`}</span> but
+              your wallet is on <span className="font-mono text-cyan-200">{CHAIN_INFO[walletChainId]?.name ?? `Chain ${walletChainId}`}</span>.
+              Switch to load balance and allowance.
+            </div>
+            <button
+              onClick={() => switchChain({ chainId: sourceChain })}
+              disabled={isSwitchingChain}
+              className="px-3 py-1.5 rounded-md bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-100 text-xs font-medium border border-cyan-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSwitchingChain
+                ? "Switching..."
+                : `Switch to ${CHAIN_INFO[sourceChain]?.name ?? `Chain ${sourceChain}`}`}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* In-flight banner — warn user batch is active */}
       {state.status === "burned" && inFlightCount > 0 && (
