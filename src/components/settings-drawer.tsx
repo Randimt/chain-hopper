@@ -7,7 +7,6 @@ import {
   DEFAULT_SETTINGS,
   REFRESH_PRESETS,
   SLIPPAGE_PRESETS,
-  isValidAddress,
   loadSettings,
   saveSettings,
 } from "@/lib/bridge-settings";
@@ -74,10 +73,6 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
     }
   };
 
-  const handleRecipientChange = (value: string) => {
-    updateSettings({ customRecipient: value.trim() });
-  };
-
   const toggleProvider = (provider: QuoteProvider) => {
     updateSettings({
       enabledProviders: {
@@ -97,8 +92,6 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
   const isCustomSlippage = !SLIPPAGE_PRESETS.some(
     (p) => p.bps === settings.slippageBps,
   );
-  const recipientValid =
-    !settings.customRecipient || isValidAddress(settings.customRecipient);
 
   if (!open || !mounted) return null;
 
@@ -222,32 +215,12 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
             </p>
           </section>
 
-          {/* Custom Recipient */}
-          <section className="space-y-3">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-500">
-              Recipient Address
-            </h3>
-            <input
-              type="text"
-              placeholder="0x... (leave empty to use your wallet)"
-              value={settings.customRecipient}
-              onChange={(e) => handleRecipientChange(e.target.value)}
-              className={`w-full rounded-md border bg-zinc-900 px-3 py-2 text-sm font-mono text-zinc-200 focus:outline-none ${
-                settings.customRecipient && !recipientValid
-                  ? "border-red-500"
-                  : "border-zinc-800 focus:border-zinc-700"
-              }`}
-            />
-            {settings.customRecipient && !recipientValid && (
-              <p className="text-xs text-red-400">
-                Invalid address format
-              </p>
-            )}
-            <p className="text-xs text-zinc-500 leading-relaxed">
-              Send bridged USDC to a different wallet. Useful for cold-storage or
-              account separation.
-            </p>
-          </section>
+          {/* Custom Recipient — removed in Phase 4: CCTP V2 mints to a single
+              recipient bytes32, but our /batch and /history flows always need
+              the connected wallet to be the mint recipient (so the user can
+              call receiveMessage from the same wallet without needing access
+              to a separate destination address). Re-enable in Phase 5 when we
+              add proper destinationCaller support per leg. */}
 
           {/* Provider Preferences (only when experimental routes enabled) */}
           {settings.experimentalRoutes && (

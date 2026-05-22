@@ -200,9 +200,12 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
   //   (b) batch awaiting attestation/mint ("burned")
   //   (c) error state where receipt hung but tx may have succeeded ("error"
   //       AND state.batchTxHash present — caller should reset explicitly)
+  //
+  // Phase 4 update: also UNLOCK when all legs minted (allLegsComplete).
+  // After complete, user should be able to start a new batch without
+  // clicking "Start new batch" first.
+  // NOTE: allLegsComplete + formLocked declared AFTER legStates to avoid TDZ.
   // ─────────────────────────────────────────────────────────────
-  const formLocked =
-    state.status === "burning" || state.status === "burned";
 
   // ─────────────────────────────────────────────────────────────
   // Stage 8: Multi-attestation tracking + per-leg mint
@@ -244,6 +247,20 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
     state.status === "burned"
       ? legStates.filter((l) => l.mintStatus === "complete").length
       : 0;
+
+  // Form lock semantics — declared after legStates to avoid TDZ.
+  // Locked while:
+  //   (a) tx in flight ("burning")
+  //   (b) batch awaiting attestation/mint ("burned")
+  // UNLOCKED when all legs minted (allLegsComplete) — user can immediately
+  // start a new batch without clicking "Start new batch" first.
+  const allLegsComplete =
+    state.status === "burned" &&
+    legStates.length > 0 &&
+    legStates.every((l) => l.mintStatus === "complete");
+  const formLocked =
+    !allLegsComplete &&
+    (state.status === "burning" || state.status === "burned");
 
   // ─────────────────────────────────────────────────────────────
   // Handlers
