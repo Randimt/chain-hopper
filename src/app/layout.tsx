@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
@@ -19,6 +19,14 @@ export const metadata: Metadata = {
     "EVM",
   ],
   authors: [{ name: "Lerand", url: "https://twitter.com/ini_lerand" }],
+  manifest: "/site.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -35,6 +43,10 @@ export const metadata: Metadata = {
       "Bridge USDC to up to 5 chains in a single transaction. Native CCTP V2, no wrapped tokens.",
     creator: "@ini_lerand",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#071022",
 };
 
 export default function RootLayout({

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lyxsa favicon">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0%" stop-color="#102047"/>
+      <stop offset="55%" stop-color="#071022"/>
+      <stop offset="100%" stop-color="#020713"/>
+    </radialGradient>
+    <linearGradient id="cyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22F4FF"/>
+      <stop offset="60%" stop-color="#13A8FF"/>
+      <stop offset="100%" stop-color="#236BFF"/>
+    </linearGradient>
+    <linearGradient id="white" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#C9F7FF"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="34" y="34" width="444" height="444" rx="92" fill="url(#bg)" stroke="#173052" stroke-width="5"/>
+  <g fill="none" stroke-linecap="round" filter="url(#glow)">
+    <path d="M122 132 C214 158 228 205 256 256" stroke="url(#cyan)" stroke-width="34"/>
+    <path d="M390 132 C298 158 284 205 256 256" stroke="url(#white)" stroke-width="34"/>
+    <path d="M122 380 C214 354 228 307 256 256" stroke="url(#white)" stroke-width="34"/>
+    <path d="M390 380 C298 354 284 307 256 256" stroke="url(#cyan)" stroke-width="34"/>
+  </g>
+  <g filter="url(#glow)">
+    <circle cx="122" cy="132" r="24" fill="url(#cyan)"/>
+    <circle cx="390" cy="132" r="24" fill="#14A8FF"/>
+    <circle cx="122" cy="380" r="24" fill="#1979FF"/>
+    <circle cx="390" cy="380" r="24" fill="#22F4FF"/>
+  </g>
+  <g filter="url(#glow)">
+    <circle cx="256" cy="256" r="58" fill="#071225" stroke="url(#cyan)" stroke-width="11"/>
+    <circle cx="256" cy="256" r="43" fill="#0A1F45" stroke="#2D83FF" stroke-width="4" opacity="0.95"/>
+    <path d="M256 207 C264 238 274 248 305 256 C274 264 264 274 256 305 C248 274 238 264 207 256 C238 248 248 238 256 207Z" fill="#24ECFF"/>
+    <path d="M256 226 C261 244 268 251 286 256 C268 261 261 268 256 286 C251 268 244 261 226 256 C244 251 251 244 256 226Z" fill="#FFFFFF" opacity="0.82"/>
+  </g>
+</svg>
