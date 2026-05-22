@@ -93,14 +93,14 @@ function LandingNav() {
         <a href="#vision" className="hover:text-zinc-100 transition-colors">Vision</a>
         <a href="#roadmap" className="hover:text-zinc-100 transition-colors">Roadmap</a>
         <a href="#features" className="hover:text-zinc-100 transition-colors">Features</a>
-        <Link href="/dashboard" className="hover:text-zinc-100 transition-colors">App</Link>
+        <a href="https://app.lyxsa.xyz/dashboard" className="hover:text-zinc-100 transition-colors">App</a>
       </div>
-      <Link
-        href="/dashboard"
+      <a
+        href="https://app.lyxsa.xyz/dashboard"
         className="px-4 py-2 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-[13px] font-semibold hover:opacity-90 transition-opacity"
       >
         Launch App →
-      </Link>
+      </a>
     </nav>
   );
 }
@@ -140,13 +140,13 @@ function Hero3D() {
         </p>
 
         <div className="ch-fade-up-delay-3 flex gap-3.5 justify-center flex-wrap">
-          <Link
-            href="/bridge"
+          <a
+            href="https://app.lyxsa.xyz/bridge"
             className="px-8 py-3.5 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 text-white text-sm font-semibold hover:-translate-y-0.5 transition-all"
             style={{ boxShadow: "0 8px 32px rgba(6,182,212,0.4)" }}
           >
             Launch Bridge →
-          </Link>
+          </a>
           <a
             href="#vision"
             className="px-8 py-3.5 rounded-lg bg-white/5 border border-white/10 text-zinc-100 text-sm font-semibold hover:bg-white/10 transition-colors backdrop-blur"
