@@ -7,7 +7,7 @@
  */
 
 import { CHAIN_INFO } from "@/lib/wagmi";
-import { Recipe, computeOutputAmount } from "@/lib/recipes-storage";
+import { Recipe, computeOutputAmount, checkBatchCompatibility } from "@/lib/recipes-storage";
 
 const SOLANA_DEVNET_ID = 999999001;
 
@@ -83,6 +83,7 @@ export function RecipeCard({
     : "Never run";
   const runCount = recipe.runCount ?? 0;
   const badge = getRunCountBadge(runCount);
+  const batchCompat = checkBatchCompatibility(recipe);
 
   return (
     <div className="group relative rounded-2xl border border-white/[0.08] bg-zinc-950/80 p-5 hover:border-white/[0.15] hover:bg-zinc-900/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-cyan-500/5 transition-all duration-200">
@@ -106,6 +107,14 @@ export function RecipeCard({
         </div>
 
         <div className="flex items-center gap-2 text-[10px] shrink-0">
+          {batchCompat.ok && (
+            <span
+              className="px-2 py-1 rounded font-semibold tracking-wider uppercase leading-none bg-cyan-500/10 text-cyan-300 border border-cyan-500/20"
+              title="Executes via LyxsaSplitter atomic batch (~30s attestation)"
+            >
+              ⚡ Atomic
+            </span>
+          )}
           <span
             className={`px-2 py-1 rounded font-semibold tracking-wider uppercase leading-none ${badge.className}`}
             title={runCount === 0 ? "Never run" : `${runCount} successful run${runCount > 1 ? "s" : ""}`}
@@ -114,6 +123,25 @@ export function RecipeCard({
           </span>
         </div>
       </div>
+
+      {/* Phase 4 batch compatibility warning */}
+      {!batchCompat.ok && (
+        <div className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-3 py-2.5 text-xs text-amber-200/90 leading-relaxed">
+          <div className="flex items-start gap-2">
+            <span className="text-amber-400 shrink-0 leading-none mt-0.5">⚠</span>
+            <div className="min-w-0 flex-1">
+              <div className="font-medium text-amber-200 mb-1 leading-tight">
+                Recipe needs update
+              </div>
+              <ul className="space-y-1 text-[11px] text-amber-200/75">
+                {batchCompat.reasons.map((reason, i) => (
+                  <li key={i} className="leading-snug">{reason}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Outputs preview */}
       <div className="space-y-2 mb-4">
@@ -176,8 +204,18 @@ export function RecipeCard({
           )}
           {onRun && (
             <button
-              onClick={() => onRun(recipe.id)}
-              className="h-8 px-3.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20 transition-all leading-none"
+              onClick={() => batchCompat.ok && onRun(recipe.id)}
+              disabled={!batchCompat.ok}
+              className={`h-8 px-3.5 rounded-lg text-xs font-semibold transition-all leading-none ${
+                batchCompat.ok
+                  ? "bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:-translate-y-px hover:shadow-lg hover:shadow-cyan-500/20"
+                  : "bg-zinc-800/60 text-zinc-600 cursor-not-allowed"
+              }`}
+              title={
+                batchCompat.ok
+                  ? "Run via atomic batch on /batch"
+                  : "Edit recipe to fix Phase 4 incompatibilities"
+              }
             >
               ▶ Run
             </button>

@@ -192,6 +192,71 @@ export function validateRecipe(
   return errors;
 }
 
+/* ------------------------------------------------------------------ */
+/* Phase 4 — Batch compatibility                                       */
+/* ------------------------------------------------------------------ */
+
+const SOLANA_DEVNET_ID = 999999001;
+const DEPLOYED_SPLITTER_CHAIN_IDS = [11155111, 84532, 421614, 5042002] as const;
+
+export interface BatchCompatibility {
+  /** Recipe can be executed via /batch (atomic) */
+  ok: boolean;
+  /** Reasons it's incompatible (empty when ok === true) */
+  reasons: string[];
+  /** True if source is on a deployed Splitter chain */
+  sourceDeployed: boolean;
+  /** True if all destinations are EVM (no Solana) */
+  allDestEvm: boolean;
+  /** True if recipe has at least 1 output */
+  hasOutputs: boolean;
+}
+
+/**
+ * Check if a recipe can be run via /batch atomic flow (Phase 4).
+ *
+ * Compatible when:
+ *   - source is on a deployed Splitter chain (Sepolia / Base / Arb / Arc)
+ *   - all destinations are EVM (Solana paused until Phase 5)
+ *   - has at least 1 output
+ *
+ * Incompatible recipes show a warning banner and disable Run.
+ */
+export function checkBatchCompatibility(recipe: Recipe): BatchCompatibility {
+  const reasons: string[] = [];
+
+  const sourceDeployed = DEPLOYED_SPLITTER_CHAIN_IDS.includes(
+    recipe.sourceChainId as (typeof DEPLOYED_SPLITTER_CHAIN_IDS)[number]
+  );
+  if (!sourceDeployed) {
+    reasons.push(
+      `Source chain ${recipe.sourceChainId} has no LyxsaSplitter deployed. Edit recipe to use Sepolia, Base Sepolia, Arbitrum Sepolia, or Arc Testnet.`
+    );
+  }
+
+  const allDestEvm = recipe.outputs.every(
+    (o) => o.destChainId !== SOLANA_DEVNET_ID
+  );
+  if (!allDestEvm) {
+    reasons.push(
+      "Solana destinations paused in Phase 4 — atomic batch is EVM-only. Cross-VM support returns in Phase 5."
+    );
+  }
+
+  const hasOutputs = recipe.outputs.length > 0;
+  if (!hasOutputs) {
+    reasons.push("Recipe has no outputs.");
+  }
+
+  return {
+    ok: sourceDeployed && allDestEvm && hasOutputs,
+    reasons,
+    sourceDeployed,
+    allDestEvm,
+    hasOutputs,
+  };
+}
+
 /**
  * Compute per-output amount from percentage and total.
  * Returns string in human units.

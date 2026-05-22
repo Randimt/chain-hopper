@@ -25,6 +25,7 @@ import {
   clearRecipeQueue,
   loadRecipeQueue,
   isQueueComplete,
+  checkBatchCompatibility,
   type Recipe,
   type RecipeQueueState,
 } from "@/lib/recipes-storage";
@@ -136,7 +137,11 @@ export default function RecipesPage() {
   const handleRun = (id: string) => {
     const recipe = recipes.find((r) => r.id === id);
     if (!recipe) return;
-    // Phase 4: ALL recipes (single or multi-output) route to /batch.
+    // Phase 4: defense-in-depth — RecipeCard already disables Run for
+    // incompatible recipes, but block here too in case caller bypasses UI.
+    const compat = checkBatchCompatibility(recipe);
+    if (!compat.ok) return;
+    // ALL recipes (single or multi-output) route to /batch.
     // Single-output recipes still benefit from atomic-batch UX (FAST attestation,
     // form lock, recovery hub integration) and stay consistent with multi-output.
     startQueue(recipe);
@@ -188,8 +193,9 @@ export default function RecipesPage() {
             </span>
           </div>
           <p className="text-sm text-zinc-400 max-w-xl">
-            Save bridge configurations as reusable presets. Multi-output
-            sequential queues with skip/cancel and refresh-safe resume.
+            Save batch configurations as reusable presets. Atomic
+            multi-destination splits via LyxsaSplitter (~30s attestation),
+            with refresh-safe recovery via /history.
           </p>
         </div>
 
@@ -394,8 +400,9 @@ export default function RecipesPage() {
                 No recipes yet
               </h3>
               <p className="text-sm text-zinc-500 mb-6 max-w-lg mx-auto leading-relaxed">
-                Save bridge configs as reusable presets — multi-output, cross-VM,
-                refresh-safe queue. One click to save, one click to re-run forever.
+                Save batch configs as reusable presets — split USDC across up to 5 EVM
+                chains in a single atomic transaction (~30s via LyxsaSplitter). One click
+                to save, one click to re-run forever.
               </p>
               <Link
                 href="/recipes/new"
