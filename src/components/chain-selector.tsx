@@ -14,6 +14,12 @@ interface ChainSelectorProps {
   label?: string;
   /** When true, Solana Devnet is selectable (used for destination only). */
   allowSolana?: boolean;
+  /**
+   * Restrict the picker to only this set of chain IDs. When provided, every
+   * other chain (EVM or coming-soon) is hidden from the dropdown. Used by
+   * Recipes (Phase 4 batch mode) to limit source to deployed Splitter chains.
+   */
+  onlyChainIds?: number[];
 }
 
 const TYPE_BADGE_STYLE: Record<ChainType, string> = {
@@ -30,17 +36,23 @@ export function ChainSelector({
   exclude,
   label,
   allowSolana = false,
+  onlyChainIds,
 }: ChainSelectorProps) {
+  const onlySet = onlyChainIds ? new Set(onlyChainIds) : null;
+  const passesOnly = (id: number) => !onlySet || onlySet.has(id);
+
   // Active EVM chains (CCTP-supported)
   const evmChainIds = Object.keys(USDC_ADDRESSES)
     .map(Number)
-    .filter((id) => !exclude || id !== exclude);
+    .filter((id) => !exclude || id !== exclude)
+    .filter(passesOnly);
 
   // Coming-soon chains (Solana etc) — visible but disabled, unless allowSolana flips Solana enabled
   const comingSoonIds = Object.entries(CHAIN_INFO)
     .filter(([, info]) => info.comingSoon)
     .map(([id]) => Number(id))
-    .filter((id) => !exclude || id !== exclude);
+    .filter((id) => !exclude || id !== exclude)
+    .filter(passesOnly);
 
   const selectedInfo = CHAIN_INFO[value];
 

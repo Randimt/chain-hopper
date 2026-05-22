@@ -102,23 +102,19 @@ export default function RecipesPage() {
     setDeleteTarget(null);
   };
 
-  const buildBridgeUrl = (recipe: Recipe, outputIdx: number = 0): string => {
-    const output = recipe.outputs[outputIdx];
-    const amount = computeOutputAmount(recipe.totalAmount, output.percentage);
-    const params = new URLSearchParams({
-      from: String(recipe.sourceChainId),
-      to: String(output.destChainId),
-      amount,
-      recipeId: recipe.id,
-      recipeName: recipe.name,
-    });
-    return `/bridge?${params.toString()}`;
+  // Phase 4: recipes execute via /batch (atomic batch through LyxsaSplitter).
+  // /batch?fromRecipe=<id> reads the recipe from localStorage and pre-fills
+  // the form with source + outputs + computed amounts.
+  const buildBatchUrl = (recipeId: string): string => {
+    return `/batch?fromRecipe=${encodeURIComponent(recipeId)}`;
   };
 
   const startQueue = (recipe: Recipe) => {
     if (!address) return;
-    // Clear any stale queue first
+    // Clear any stale queue first (legacy single-tx queue from Phase 3)
     clearRecipeQueue(address);
+    // Phase 4: persist queue snapshot for backwards compat (history grouping
+    // can still tie batch records back to a recipe), then redirect to /batch.
     const queue: RecipeQueueState = {
       recipeId: recipe.id,
       recipeName: recipe.name,
@@ -134,19 +130,16 @@ export default function RecipesPage() {
       startedAt: Date.now(),
     };
     saveRecipeQueue(address, queue);
-    router.push(buildBridgeUrl(recipe, 0));
+    router.push(buildBatchUrl(recipe.id));
   };
 
   const handleRun = (id: string) => {
     const recipe = recipes.find((r) => r.id === id);
     if (!recipe) return;
-    if (recipe.outputs.length === 1) {
-      // Single output — direct redirect, no queue needed
-      router.push(buildBridgeUrl(recipe, 0));
-    } else {
-      // Multi-output — show modal explaining sequential queue flow
-      setRunTarget(recipe);
-    }
+    // Phase 4: ALL recipes (single or multi-output) route to /batch.
+    // Single-output recipes still benefit from atomic-batch UX (FAST attestation,
+    // form lock, recovery hub integration) and stay consistent with multi-output.
+    startQueue(recipe);
   };
 
   const confirmMultiRun = () => {
@@ -155,19 +148,12 @@ export default function RecipesPage() {
     setRunTarget(null);
   };
 
-  // Resume active queue — redirect back to bridge with current output prefilled
+  // Resume active queue — redirect back to /batch with the recipe id.
+  // Active queue state in localStorage tells /batch which legs are still
+  // pending if user navigated away mid-mint.
   const resumeQueue = () => {
     if (!activeQueue) return;
-    const currentOutput = activeQueue.outputs[activeQueue.currentIndex];
-    if (!currentOutput) return;
-    const params = new URLSearchParams({
-      from: String(activeQueue.sourceChainId),
-      to: String(currentOutput.destChainId),
-      amount: currentOutput.amount,
-      recipeId: activeQueue.recipeId,
-      recipeName: activeQueue.recipeName,
-    });
-    router.push(`/bridge?${params.toString()}`);
+    router.push(buildBatchUrl(activeQueue.recipeId));
   };
 
   // Cancel active queue — wipe localStorage + close modal

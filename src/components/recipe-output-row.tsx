@@ -4,7 +4,11 @@
  * RecipeOutputRow — single output row in recipe form.
  *
  * Composed: ChainSelector (dest) + percentage input + computed amount + remove button.
- * Solana destination supported (allowSolana=true).
+ *
+ * Phase 4 mode: destinations restricted to EVM chains supported by Circle's
+ * CCTP V2 protocol (22 testnets). Solana destinations paused — recipe execution
+ * routes through LyxsaSplitter which is EVM-only. Cross-VM batch returns in
+ * Phase 5 alongside App Kits SDK migration.
  */
 
 import { ChainSelector } from "@/components/chain-selector";
@@ -68,14 +72,13 @@ export function RecipeOutputRow({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_120px] gap-3 items-end">
-        {/* Destination chain */}
+        {/* Destination chain — EVM only (LyxsaSplitter constraint) */}
         <div>
           <ChainSelector
             value={output.destChainId}
             onChange={handleChainChange}
             exclude={sourceChainId}
             label="Destination"
-            allowSolana
           />
         </div>
 

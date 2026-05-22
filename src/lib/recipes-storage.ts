@@ -504,40 +504,46 @@ export interface RecipeTemplate {
 /**
  * Built-in recipe templates. Used to seed empty state.
  * User clicks template → form prefills, user can edit before save.
+ *
+ * Phase 4: EVM-only destinations (LyxsaSplitter constraint). Cross-VM
+ * templates (Solana) return in Phase 5 with App Kits SDK migration.
  */
 export const RECIPE_TEMPLATES: RecipeTemplate[] = [
   {
     id: "tmpl_l2_diversify",
     name: "Diversify across L2s",
-    description: "Split across Base, Arc, and Optimism testnets",
+    description: "Split across Base, Arbitrum, and Arc testnets",
     sourceChainId: 11155111, // Sepolia
     totalAmountSuggestion: "1.0",
     outputs: [
       { destChainId: 84532, percentage: 40, label: "Base Sepolia" },
-      { destChainId: 5042002, percentage: 35, label: "Arc Testnet" },
+      { destChainId: 421614, percentage: 35, label: "Arbitrum Sepolia" },
+      { destChainId: 5042002, percentage: 25, label: "Arc Testnet" },
+    ],
+  },
+  {
+    id: "tmpl_arc_heavy",
+    name: "Arc-heavy split",
+    description: "Bridge majority to Arc, keep some on other L2s",
+    sourceChainId: 11155111, // Sepolia
+    totalAmountSuggestion: "1.0",
+    outputs: [
+      { destChainId: 5042002, percentage: 60, label: "Arc Testnet" },
+      { destChainId: 84532, percentage: 25, label: "Base Sepolia" },
+      { destChainId: 421614, percentage: 15, label: "Arbitrum Sepolia" },
+    ],
+  },
+  {
+    id: "tmpl_equal_split",
+    name: "Equal 4-way split",
+    description: "Distribute evenly across major L2s + Arc",
+    sourceChainId: 11155111, // Sepolia
+    totalAmountSuggestion: "2.0",
+    outputs: [
+      { destChainId: 84532, percentage: 25, label: "Base Sepolia" },
+      { destChainId: 421614, percentage: 25, label: "Arbitrum Sepolia" },
       { destChainId: 11155420, percentage: 25, label: "Optimism Sepolia" },
-    ],
-  },
-  {
-    id: "tmpl_cross_vm",
-    name: "Cross-VM split",
-    description: "Mix EVM L2 + Solana for cross-VM exposure",
-    sourceChainId: 11155111, // Sepolia
-    totalAmountSuggestion: "1.0",
-    outputs: [
-      { destChainId: 84532, percentage: 50, label: "Base Sepolia" },
-      { destChainId: 999999001, percentage: 50, label: "Solana Devnet" },
-    ],
-  },
-  {
-    id: "tmpl_solana_focus",
-    name: "Solana focus",
-    description: "Bridge majority to Solana, keep some on EVM",
-    sourceChainId: 11155111, // Sepolia
-    totalAmountSuggestion: "1.0",
-    outputs: [
-      { destChainId: 999999001, percentage: 70, label: "Solana Devnet" },
-      { destChainId: 84532, percentage: 30, label: "Base Sepolia" },
+      { destChainId: 5042002, percentage: 25, label: "Arc Testnet" },
     ],
   },
 ];

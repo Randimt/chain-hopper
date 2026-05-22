@@ -27,8 +27,15 @@ import {
   validateRecipe,
 } from "@/lib/recipes-storage";
 import { USDC_ADDRESSES, SOLANA_DEVNET_CHAIN_ID } from "@/lib/wagmi";
+import { LYXSA_SPLITTER_ADDRESS } from "@/lib/lyxsa-splitter";
 
 const MAX_OUTPUTS = 5;
+
+// Phase 4: recipes execute via LyxsaSplitter (atomic batch). Source chain
+// must be one of the 4 deployed Splitter chains. Destinations are any EVM
+// chain that Circle's CCTP V2 supports (USDC_ADDRESSES). Solana destinations
+// paused until Phase 5 (App Kits + cross-VM batch).
+const DEPLOYED_SOURCE_CHAINS = Object.keys(LYXSA_SPLITTER_ADDRESS).map(Number);
 
 interface RecipeFormProps {
   mode: "create" | "edit" | "from-template";
@@ -66,15 +73,18 @@ function buildInitialState(
       outputs: [...initial.outputs],
     };
   }
-  // Create mode (blank)
-  const defaultEvmIds = Object.keys(USDC_ADDRESSES).map(Number);
+  // Create mode (blank) — Phase 4: source must be a deployed Splitter chain,
+  // destinations are EVM-only (Solana destinations paused until Phase 5).
+  const evmIds = Object.keys(USDC_ADDRESSES)
+    .map(Number)
+    .filter((id) => id !== SOLANA_DEVNET_CHAIN_ID);
+  const defaultSource = DEPLOYED_SOURCE_CHAINS[0] ?? 11155111; // Sepolia fallback
+  const defaultDest = evmIds.find((id) => id !== defaultSource) ?? 84532;
   return {
     name: "",
-    sourceChainId: defaultEvmIds[0] ?? 11155111,
+    sourceChainId: defaultSource,
     totalAmount: "",
-    outputs: [
-      { destChainId: defaultEvmIds[1] ?? 84532, percentage: 100 },
-    ],
+    outputs: [{ destChainId: defaultDest, percentage: 100 }],
   };
 }
 
@@ -243,6 +253,15 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Phase 4 batch mode hint */}
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-3 text-[12px] text-cyan-200/90">
+        <span className="font-semibold text-cyan-300">Atomic batch mode</span>
+        <span className="text-cyan-200/70">
+          {" "}— recipes execute via LyxsaSplitter (1 approve + 1 batch tx).
+          Source restricted to 4 chains with deployed Splitter. Solana
+          destinations paused until Phase 5.
+        </span>
+      </div>
       {/* Name */}
       <div className="space-y-2">
         <label className="text-xs uppercase tracking-wider text-zinc-500 font-medium">
@@ -269,7 +288,7 @@ export function RecipeForm({ mode, initial, recipeId }: RecipeFormProps) {
           value={state.sourceChainId}
           onChange={handleSourceChange}
           label="Source Chain"
-          allowSolana
+          onlyChainIds={DEPLOYED_SOURCE_CHAINS}
         />
 
         <div className="space-y-2">

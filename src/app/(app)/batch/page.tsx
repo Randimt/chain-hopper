@@ -26,6 +26,11 @@ import {
   findBatchSiblings,
   type BridgeRecord,
 } from "@/lib/bridge-history";
+import {
+  getRecipe,
+  computeOutputAmount,
+  type Recipe,
+} from "@/lib/recipes-storage";
 
 /**
  * Phase 4 — Batch Bridge MVP
@@ -59,16 +64,19 @@ function BatchPageSkeleton() {
 function BatchPageInner() {
   const params = useSearchParams();
   const recoverTxHash = params.get("recover") as `0x${string}` | null;
+  const fromRecipeId = params.get("fromRecipe");
 
   // Recovery mode short-circuits the create flow entirely.
   if (recoverTxHash) {
     return <BatchRecoveryView txHash={recoverTxHash} />;
   }
 
-  return <BatchCreateView />;
+  // Recipe mode: load saved recipe + pre-fill the create form with its
+  // source + outputs. Same UI as ad-hoc batch, just pre-populated.
+  return <BatchCreateView fromRecipeId={fromRecipeId ?? undefined} />;
 }
 
-function BatchCreateView() {
+function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
   const { address } = useAccount();
   const { state, approve, batchBurn, reset } = useBatchBridge();
 
@@ -80,6 +88,28 @@ function BatchCreateView() {
     { id: 1, destChainId: 84532, amountStr: "" }, // Base Sepolia
     { id: 2, destChainId: 421614, amountStr: "" }, // Arbitrum Sepolia
   ]);
+
+  // Recipe-driven mode: pre-fill source + outputs from saved recipe.
+  // Runs once per (recipe, wallet) — user can still edit after load.
+  const [recipeMeta, setRecipeMeta] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!fromRecipeId || !address) return;
+    const recipe = getRecipe(address, fromRecipeId);
+    if (!recipe) return;
+    // Pre-fill form
+    setSourceChain(recipe.sourceChainId);
+    setOutputs(
+      recipe.outputs.map((o, idx) => ({
+        id: idx + 1,
+        destChainId: o.destChainId,
+        amountStr: computeOutputAmount(recipe.totalAmount, o.percentage),
+      }))
+    );
+    setRecipeMeta({ id: recipe.id, name: recipe.name });
+  }, [fromRecipeId, address]);
 
   // Source USDC balance
   const usdcAddress = USDC_ADDRESSES[sourceChain];
@@ -245,20 +275,29 @@ function BatchCreateView() {
       <header className="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <h1 className="text-3xl font-bold">Batch Bridge</h1>
+            <h1 className="text-3xl font-bold">
+              {recipeMeta ? "Run Recipe" : "Batch Bridge"}
+            </h1>
             <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 text-[10px] font-bold tracking-wider uppercase">
               Beta
             </span>
+            {recipeMeta && (
+              <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 text-[10px] font-bold tracking-wider uppercase">
+                Recipe
+              </span>
+            )}
           </div>
           <p className="text-zinc-500 text-sm">
-            Fan-out splitter — 1 USDC source, up to {MAX_BATCH_DESTINATIONS} chains, 1 batch tx.
+            {recipeMeta
+              ? `${recipeMeta.name} — pre-filled from your saved recipe. Edit before bridging if you want.`
+              : `Fan-out splitter — 1 USDC source, up to ${MAX_BATCH_DESTINATIONS} chains, 1 batch tx.`}
           </p>
         </div>
         <Link
           href="/recipes"
           className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
         >
-          Use Recipes (sequential queue) →
+          {recipeMeta ? "← Back to Recipes" : "Browse Recipes →"}
         </Link>
       </header>
 
