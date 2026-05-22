@@ -519,33 +519,6 @@ export default function RecipesPage() {
         </div>
       )}
 
-      {/* Stage progress hint */}
-      <div className="mt-12 pt-8 border-t border-white/[0.06]">
-        <div className="rounded-xl bg-zinc-950/40 border border-white/[0.04] p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-sm shrink-0">
-              📋
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-zinc-300 mb-1">
-                Phase 3 Recipes — Shipped (Beta)
-              </p>
-              <ul className="text-[11px] text-zinc-500 space-y-0.5 leading-relaxed">
-                <li>✓ Stage 1 · Foundation (storage, validation, hook)</li>
-                <li>✓ Stage 2 · List page</li>
-                <li>✓ Stage 3 · Create &amp; edit form</li>
-                <li>✓ Stage 4 · Single-output execution</li>
-                <li>✓ Stage 5 · Multi-output sequential queue</li>
-                <li>
-                  ✓ Stage 6 · Polish — resume banner, analytics, history tagging,
-                  mobile responsive, recruiter-tier
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Multi-output run modal — Stage 5 sequential queue flow */}
       {runTarget && (
         <div
