@@ -88,15 +88,16 @@ export function TopNav() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
         {/* Left: Logo + Nav links */}
         <div className="flex items-center gap-8 lg:gap-10 min-w-0">
-          <Link
-            href="/"
+          <a
+            href="https://lyxsa.xyz"
             className="flex items-center gap-2 h-9 font-bold text-base text-zinc-100 hover:text-white transition-colors shrink-0"
+            aria-label="Lyxsa landing page"
           >
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center text-white font-black text-xs">
               L
             </div>
             <span className="hidden sm:inline leading-none">Lyxsa</span>
-          </Link>
+          </a>
 
           <div className="hidden lg:flex items-center gap-1 h-9">
             {NAV_ITEMS.map((item) => {
