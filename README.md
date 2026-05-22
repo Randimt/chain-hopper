@@ -7,7 +7,7 @@
 ![Solana](https://img.shields.io/badge/Solana-Devnet-9945FF)
 ![Status](https://img.shields.io/badge/Status-Beta-success)
 
-**Live:** [chain-hopper.randimuhtajularipin.workers.dev](https://chain-hopper.randimuhtajularipin.workers.dev)
+**Live:** [app.lyxsa.xyz](https://app.lyxsa.xyz)
 
 ---
 
