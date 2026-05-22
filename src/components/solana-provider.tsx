@@ -14,16 +14,21 @@ export const SOLANA_DEVNET_RPC = clusterApiUrl("devnet");
 export const SOLANA_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 
 /**
- * Detects locked wallet state on page load and auto-disconnects.
+ * Detects locked Phantom wallet on page load and auto-disconnects.
  *
  * When user locks Phantom but doesn't disconnect from dApp:
  *   - autoConnect tries to restore session
  *   - wallet.adapter.connected becomes true briefly
  *   - But signing fails because wallet is locked
  *
- * This component polls the underlying provider for unlock state.
- * If wallet is locked at mount time, force disconnect to avoid
- * misleading "connected" UI when the wallet can't actually sign.
+ * Phantom-specific: only Phantom exposes window.solana.isConnected
+ * as a reliable lock-state signal. Backpack/Solflare have different
+ * provider shapes — running this guard against them caused an
+ * auto-disconnect loop (window.solana stays present from a previous
+ * Phantom install, so the guard "sees" Phantom locked even when the
+ * actual connected wallet is Backpack/Solflare).
+ *
+ * Fix: only run the guard when the active wallet adapter is Phantom.
  */
 function LockedWalletGuard() {
   const { connected, disconnect, wallet } = useWallet();
@@ -31,14 +36,19 @@ function LockedWalletGuard() {
   useEffect(() => {
     if (!connected || !wallet) return;
 
-    // Check if Phantom provider has locked state
-    // window.solana.isConnected reflects actual unlock state
+    // Skip guard for non-Phantom wallets — their provider APIs differ
+    // and window.solana belongs to Phantom only.
+    const adapterName = wallet.adapter.name.toLowerCase();
+    if (!adapterName.includes("phantom")) return;
+
+    // Check if Phantom provider has locked state.
+    // window.solana.isConnected reflects actual unlock state for Phantom.
     const checkLockState = async () => {
       try {
         const provider = (window as unknown as { solana?: { isConnected?: boolean; publicKey?: unknown } }).solana;
         if (provider && provider.isConnected === false) {
-          // Wallet is locked — force disconnect from dApp
-          console.warn("[Lyxsa] Solana wallet locked — auto-disconnecting");
+          // Phantom is locked — force disconnect from dApp
+          console.warn("[Lyxsa] Phantom wallet locked — auto-disconnecting");
           await disconnect();
         }
       } catch {
