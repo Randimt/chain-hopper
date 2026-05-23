@@ -124,7 +124,7 @@ function Hero3D() {
       <div className="relative z-10 text-center max-w-4xl px-6">
         <div className="ch-fade-up inline-flex items-center gap-2 px-4 py-1.5 bg-green-500/10 border border-green-500/30 rounded-full text-xs text-green-400 mb-8 backdrop-blur">
           <span className="w-[7px] h-[7px] rounded-full bg-green-500 ch-dot-pulse"></span>
-          Cross-VM bridge live · Recipes shipped · Batch coming · 22 EVM + Solana · Powered by CCTP V2
+          Cross-VM bridge live · Recipes shipped · Batch coming · 22 EVM chains · Powered by CCTP V2
         </div>
 
         <h1 className="ch-fade-up-delay-1 text-[clamp(48px,9vw,108px)] font-bold leading-[0.95] tracking-tight mb-6">
@@ -177,7 +177,7 @@ function VisionSection() {
       </h2>
       <p className="text-lg text-zinc-400 leading-relaxed max-w-2xl mb-16">
         You have <strong className="text-zinc-100">300 USDC on Sepolia</strong>. You want to split it{" "}
-        <strong className="text-zinc-100">across Base + Arc + Solana</strong>. Today you&apos;d open three bridges,
+        <strong className="text-zinc-100">across Base + Arc + Arbitrum</strong>. Today you&apos;d open three bridges,
         sign six transactions, and burn thirty minutes of your life.{" "}
         <em className="text-cyan-300 not-italic">We built something better.</em>
       </p>
@@ -190,7 +190,7 @@ function VisionSection() {
         <p className="text-base sm:text-[17px] leading-[1.7] text-zinc-300">
           <strong className="text-zinc-100">From:</strong> 300 USDC on Sepolia
           <br />
-          <strong className="text-zinc-100">To:</strong> 40% Base + 30% Arc + 30% Solana
+          <strong className="text-zinc-100">To:</strong> 40% Base + 30% Arc + 30% Arbitrum
         </p>
       </div>
 
@@ -208,8 +208,8 @@ function VisionSection() {
             <CompareRow tone="bad" num={2} title="Wait for attestation" sub="Watch the bridge confirm" />
             <CompareRow tone="bad" num={3} title="Open another bridge" sub="Bridge 90 USDC SEP → ARC" />
             <CompareRow tone="bad" num={4} title="Wait again" sub="More clicking, more waiting" />
-            <CompareRow tone="bad" num={5} title="Open Solana bridge" sub="Bridge 90 USDC SEP → Solana" />
-            <CompareRow tone="bad" num={6} title="Switch wallets" sub="MetaMask + Phantom dance" />
+            <CompareRow tone="bad" num={5} title="Open Arbitrum bridge" sub="Bridge 90 USDC SEP → ARB" />
+            <CompareRow tone="bad" num={6} title="Switch RPCs" sub="Network juggling, more waiting" />
           </ul>
           <div className="pt-5 border-t border-white/5 font-mono text-xs uppercase tracking-[0.1em] text-red-500">
             6 steps · 3 apps · 30+ min · context-switch fatigue
@@ -227,12 +227,12 @@ function VisionSection() {
           </div>
           <div className="text-2xl font-bold tracking-tight mb-6">One recipe. One click.</div>
           <ul className="space-y-3.5 flex-1 mb-6">
-            <CompareRow tone="good" num={1} title="Save your recipe" sub={"\"Sepolia USDC → 40% Base + 30% Arc + 30% Solana\""} />
+            <CompareRow tone="good" num={1} title="Save your recipe" sub={"\"Sepolia USDC → 40% Base + 30% Arc + 30% Arbitrum\""} />
             <CompareRow tone="good" num={2} title="Click Run" sub="Sequential queue auto-handles each output" />
             <CompareRow tone="good" num={3} title="Done" sub="USDC lands on every destination chain" />
           </ul>
           <div className="pt-5 border-t border-white/5 font-mono text-xs uppercase tracking-[0.1em] text-green-500">
-            1 recipe · 22 EVM + Solana · ~30 sec/output · transparent fees
+            1 recipe · 4 EVM chains · ~30 sec/output · transparent fees
           </div>
         </div>
       </div>
@@ -324,7 +324,7 @@ function RoadmapSection() {
           features={[
             "Save bridge configs as reusable recipes",
             "Multi-output sequential queue (1 click → N bridges)",
-            "Cross-VM recipes (EVM ↔ Solana)",
+            "EVM-only batch recipes (Solana support coming)",
             "Per-output skip/cancel + refresh-safe resume",
             "Reclaim feature for orphaned burns",
           ]}
