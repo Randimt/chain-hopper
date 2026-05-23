@@ -93,8 +93,8 @@ export function TopNav() {
             className="flex items-center gap-2 h-9 font-bold text-base text-zinc-100 hover:text-white transition-colors shrink-0"
             aria-label="Lyxsa landing page"
           >
-            <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center text-white font-black text-xs">
-              L
+            <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+              <img src="/favicon.svg" alt="Lyxsa logo" width={32} height={32} className="w-full h-full" />
             </div>
             <span className="hidden sm:inline leading-none">Lyxsa</span>
           </a>

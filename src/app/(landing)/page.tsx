@@ -84,8 +84,8 @@ function LandingNav() {
   return (
     <nav className="fixed top-0 inset-x-0 z-50 backdrop-blur-xl bg-black/40 border-b border-white/5 px-5 sm:px-10 py-5 flex items-center justify-between">
       <Link href="/" className="flex items-center gap-2.5 font-bold text-base sm:text-[17px] tracking-tight">
-        <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base">
-          ⚡
+        <div className="w-[30px] h-[30px] rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+          <img src="/favicon.svg" alt="Lyxsa logo" width={30} height={30} className="w-full h-full" />
         </div>
         <span>Lyxsa</span>
       </Link>
@@ -485,8 +485,8 @@ function LandingFooter() {
       <div className="max-w-6xl mx-auto grid md:grid-cols-2 lg:grid-cols-4 gap-12 mb-12">
         <div className="lg:col-span-1">
           <div className="flex items-center gap-2.5 font-bold text-[17px] tracking-tight mb-4">
-            <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-base">
-              ⚡
+            <div className="w-[30px] h-[30px] rounded-lg overflow-hidden flex items-center justify-center shrink-0">
+              <img src="/favicon.svg" alt="Lyxsa logo" width={30} height={30} className="w-full h-full" />
             </div>
             <span>Lyxsa</span>
           </div>
