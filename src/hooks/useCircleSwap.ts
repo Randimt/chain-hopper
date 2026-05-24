@@ -115,7 +115,7 @@ export function useCircleSwap() {
           // (same exposure model as WalletConnect Project ID). Cloudflare Pages
           // Encrypted Secrets aren't bundled into the client build, so we ship
           // the public kit key in source. Rotate at console.circle.com if leaked.
-          "747378986a9198e8b76e958f1408ea6f:f39ddddb36e88c4c1f751a7f8525ddd6";
+          "KIT_KEY:747378986a9198e8b76e958f1408ea6f:f39ddddb36e88c4c1f751a7f8525ddd6";
         if (!kitKey) {
           throw new Error(
             "Circle Kit Key missing. Set NEXT_PUBLIC_CIRCLE_KIT_KEY in .env.local",
