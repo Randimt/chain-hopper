@@ -15,10 +15,8 @@ import { CHAIN_INFO } from "@/lib/wagmi";
 const ARC_TESTNET_CHAIN_ID = 5042002;
 
 // Tokens supported by Circle Swap on Arc Testnet (per docs.arc.io/app-kit/swap)
-// USDC + EURC confirmed via docs.arc.io/arc/references/contract-addresses.
-// cirBTC not yet documented in public Arc docs — leave commented out until
-// Circle publishes its testnet address.
-const SUPPORTED_TOKENS: SwapToken[] = ["USDC", "EURC"];
+// Addresses confirmed via testnet.arcscan.app + docs.arc.io.
+const SUPPORTED_TOKENS: SwapToken[] = ["USDC", "EURC", "cirBTC"];
 
 const TOKEN_DECIMALS: Record<SwapToken, number> = {
   USDC: 6,
@@ -32,12 +30,14 @@ const TOKEN_LABELS: Record<SwapToken, { symbol: string; name: string; emoji: str
   cirBTC: { symbol: "cirBTC", name: "Circle BTC", emoji: "₿" },
 };
 
-// Token addresses on Arc Testnet (source: docs.arc.io/arc/references/contract-addresses)
-// Native USDC also has an ERC-20 interface at the address below — used here
-// for `balanceOf` reads (the SDK handles native vs ERC-20 internally during swap).
+// Token addresses on Arc Testnet
+//   USDC:   docs.arc.io/arc/references/contract-addresses (native ERC-20 interface)
+//   EURC:   docs.arc.io/arc/references/contract-addresses
+//   cirBTC: testnet.arcscan.app/token/0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF
 const TOKEN_ADDRESSES_ARC: Partial<Record<SwapToken, `0x${string}`>> = {
   USDC: "0x3600000000000000000000000000000000000000",
   EURC: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+  cirBTC: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
 };
 
 function shortHash(hash: string) {
