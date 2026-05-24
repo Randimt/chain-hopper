@@ -281,40 +281,53 @@ export function useCircleSwap() {
           },
         });
 
+        // SwapResult shape (per @circle-fin/swap-kit types):
+        //   { tokenIn, tokenOut, chain, amountIn, amountOut?, txHash,
+        //     executedTransactions: [{ type: 'approval'|'swap', txHash }],
+        //     fees, ... }
+        //
+        // No `state` field — successful return = swap succeeded.
+        // Failures throw, so reaching here means complete.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const rawSteps = (result as any).steps ?? [];
-        const steps: CircleSwapStep[] = rawSteps.map(
-          (s: { name: string; state: string }) => ({
-            name: s.name,
-            state: s.state as "pending" | "success" | "error",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            txHash: (s as any).txHash,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            explorerUrl: (s as any).explorerUrl,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            errorMessage: (s as any).errorMessage,
-          }),
-        );
+        const r = result as any;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const resultState = (result as any).state;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const estimatedOut = (result as any).amountOut ?? (result as any).estimatedAmountOut;
-
-        if (resultState === "success") {
-          setState({ status: "complete", steps, estimatedOut });
-        } else if (resultState === "error") {
-          const failedStep = steps.find((s) => s.state === "error");
-          setState({
-            status: "error",
-            steps,
-            error:
-              failedStep?.errorMessage ??
-              "Swap failed during execution — check step details",
-          });
+        // Build steps from executedTransactions if present, otherwise synthesize
+        // a single "swap" step using the top-level txHash.
+        let steps: CircleSwapStep[];
+        if (Array.isArray(r.executedTransactions) && r.executedTransactions.length > 0) {
+          steps = r.executedTransactions.map(
+            (tx: { type: string; txHash: string }) => ({
+              name:
+                tx.type === "approval"
+                  ? "Approve token"
+                  : tx.type === "permit"
+                    ? "Sign permit"
+                    : "Execute swap",
+              state: "success" as const,
+              txHash: tx.txHash,
+              explorerUrl: `https://testnet.arcscan.app/tx/${tx.txHash}`,
+            }),
+          );
+        } else if (r.txHash) {
+          steps = [
+            {
+              name: "Execute swap",
+              state: "success" as const,
+              txHash: r.txHash,
+              explorerUrl: `https://testnet.arcscan.app/tx/${r.txHash}`,
+            },
+          ];
         } else {
-          setState({ status: "swapping", steps });
+          steps = [];
         }
+
+        const finalAmountOut: string | undefined = r.amountOut;
+
+        setState({
+          status: "complete",
+          steps,
+          estimatedOut: finalAmountOut,
+        });
 
         return result;
       } catch (e) {
