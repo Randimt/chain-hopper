@@ -102,6 +102,56 @@ export function useCircleSwap() {
           throw new Error("Amount must be greater than zero");
         }
 
+        // ─────────────────────────────────────────────────────────────────
+        // CORS WORKAROUND for Circle Stablecoin Service API
+        //
+        // Circle's @circle-fin/provider-stablecoin-service-swap SDK injects an
+        // `X-User-Agent` header on every fetch (because browsers block setting
+        // `User-Agent` directly). However, the Circle API's CORS policy does
+        // not include `X-User-Agent` in `Access-Control-Allow-Headers`, so the
+        // browser blocks the preflight and you get:
+        //   "Failed to fetch" / "CORS policy: Request header field x-user-agent
+        //    is not allowed by Access-Control-Allow-Headers in preflight response"
+        //
+        // Until Circle fixes their CORS allowlist, we monkey-patch `fetch` for
+        // requests targeting api.circle.com to strip that header before send.
+        // The header is purely diagnostic (telemetry) — removing it doesn't
+        // affect auth or the swap operation itself.
+        //
+        // Patched once per page load, idempotent.
+        // ─────────────────────────────────────────────────────────────────
+        if (
+          typeof window !== "undefined" &&
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          !(window as any).__circleFetchPatched
+        ) {
+          const originalFetch = window.fetch.bind(window);
+          window.fetch = (async (
+            input: RequestInfo | URL,
+            init?: RequestInit,
+          ) => {
+            try {
+              const url =
+                typeof input === "string"
+                  ? input
+                  : input instanceof URL
+                    ? input.toString()
+                    : input.url;
+              if (url.includes("api.circle.com") && init?.headers) {
+                const cleaned = new Headers(init.headers);
+                cleaned.delete("X-User-Agent");
+                cleaned.delete("x-user-agent");
+                return originalFetch(input, { ...init, headers: cleaned });
+              }
+            } catch {
+              // fall through to original on any inspection error
+            }
+            return originalFetch(input, init);
+          }) as typeof window.fetch;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).__circleFetchPatched = true;
+        }
+
         const circleChainName = chainIdToCircleSwapName(chainId);
         if (!circleChainName) {
           throw new Error(
