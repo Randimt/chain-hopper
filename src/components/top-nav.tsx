@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { href: "/bridge", label: "Bridge" },
   { href: "/recipes", label: "Recipes", beta: true },
   { href: "/batch", label: "Batch", beta: true },
-  // { href: "/swap", label: "Swap", soon: true }, // Hidden until Phase 5 ships — preserve route at /swap
+  { href: "/swap", label: "Swap", beta: true },
   { href: "/history", label: "History" },
 ];
 
