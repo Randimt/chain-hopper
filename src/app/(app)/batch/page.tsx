@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
+import { RecipesModal } from "@/components/recipes-modal";
 import { useAccount, useReadContract, useChainId, useSwitchChain } from "wagmi";
 import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 
@@ -95,6 +96,10 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
     id: string;
     name: string;
   } | null>(null);
+
+  // Recipes modal state — replaces standalone /recipes nav entry
+  const [recipesModalOpen, setRecipesModalOpen] = useState(false);
+
   useEffect(() => {
     if (!fromRecipeId || !address) return;
     const recipe = getRecipe(address, fromRecipeId);
@@ -328,12 +333,23 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
               : `Fan-out splitter — 1 USDC source, up to ${MAX_BATCH_DESTINATIONS} chains, 1 batch tx.`}
           </p>
         </div>
-        <Link
-          href="/recipes"
-          className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
-        >
-          {recipeMeta ? "← Back to Recipes" : "Browse Recipes →"}
-        </Link>
+        {recipeMeta ? (
+          <Link
+            href="/batch"
+            className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+          >
+            ← Clear recipe
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRecipesModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/5 text-purple-300 hover:bg-purple-500/10 hover:border-purple-500/50 text-xs font-semibold transition-all"
+          >
+            <span>📋</span>
+            Load Recipe
+          </button>
+        )}
       </header>
 
       {/* Chain mismatch banner — wallet on different network than form source */}
@@ -530,6 +546,11 @@ function BatchCreateView({ fromRecipeId }: { fromRecipeId?: string }) {
       <div className="mt-8 text-xs text-zinc-600 text-center">
         Phase 4 LIVE · LyxsaSplitter deployed on 4 testnets · 25 tests · Slither clean
       </div>
+
+      <RecipesModal
+        open={recipesModalOpen}
+        onClose={() => setRecipesModalOpen(false)}
+      />
     </div>
   );
 }

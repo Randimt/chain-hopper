@@ -9,12 +9,18 @@ import toast from "react-hot-toast";
 import { CHAIN_INFO } from "@/lib/wagmi";
 import { SolanaWalletButton } from "@/components/solana-wallet-button";
 
-const NAV_ITEMS = [
+type NavItem = {
+  href: string;
+  label: string;
+  beta?: boolean;
+  soon?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/bridge", label: "Bridge" },
-  { href: "/recipes", label: "Recipes", beta: true },
-  { href: "/batch", label: "Batch", beta: true },
   { href: "/swap", label: "Swap", beta: true },
+  { href: "/bridge", label: "Bridge" },
+  { href: "/batch", label: "Batch", beta: true },
   { href: "/history", label: "History" },
 ];
 
