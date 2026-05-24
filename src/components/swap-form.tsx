@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAccount, useChainId, useReadContract, useSwitchChain } from "wagmi";
 import { erc20Abi, formatUnits } from "viem";
 import toast from "react-hot-toast";
@@ -15,7 +15,10 @@ import { CHAIN_INFO } from "@/lib/wagmi";
 const ARC_TESTNET_CHAIN_ID = 5042002;
 
 // Tokens supported by Circle Swap on Arc Testnet (per docs.arc.io/app-kit/swap)
-const SUPPORTED_TOKENS: SwapToken[] = ["USDC", "EURC", "cirBTC"];
+// USDC + EURC confirmed via docs.arc.io/arc/references/contract-addresses.
+// cirBTC not yet documented in public Arc docs — leave commented out until
+// Circle publishes its testnet address.
+const SUPPORTED_TOKENS: SwapToken[] = ["USDC", "EURC"];
 
 const TOKEN_DECIMALS: Record<SwapToken, number> = {
   USDC: 6,
@@ -29,13 +32,12 @@ const TOKEN_LABELS: Record<SwapToken, { symbol: string; name: string; emoji: str
   cirBTC: { symbol: "cirBTC", name: "Circle BTC", emoji: "₿" },
 };
 
-// Token addresses on Arc Testnet — leave undefined to disable balance read
-// (SDK still works without these; balance display is best-effort)
+// Token addresses on Arc Testnet (source: docs.arc.io/arc/references/contract-addresses)
+// Native USDC also has an ERC-20 interface at the address below — used here
+// for `balanceOf` reads (the SDK handles native vs ERC-20 internally during swap).
 const TOKEN_ADDRESSES_ARC: Partial<Record<SwapToken, `0x${string}`>> = {
-  // Will be populated once we confirm Arc Testnet token contracts
-  // USDC: "0x...",
-  // EURC: "0x...",
-  // cirBTC: "0x...",
+  USDC: "0x3600000000000000000000000000000000000000",
+  EURC: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
 };
 
 function shortHash(hash: string) {
@@ -129,10 +131,58 @@ export function SwapForm() {
   const [amountIn, setAmountIn] = useState("");
 
   const swapHook = useCircleSwap();
-  const { swap, status, steps, error, estimatedOut, reset } = swapHook;
+  const { swap, status, steps, error, estimatedOut, reset, estimate } = swapHook;
 
   const onArcTestnet = chainId === ARC_TESTNET_CHAIN_ID;
   const arcChainName = CHAIN_INFO[ARC_TESTNET_CHAIN_ID]?.name ?? "Arc Testnet";
+
+  // Live quote — debounced re-fetch when inputs change
+  const [liveQuote, setLiveQuote] = useState<{
+    estimatedOut?: string;
+    minOut?: string;
+  } | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
+  useEffect(() => {
+    // Skip while a swap is mid-flight (avoids duplicate API calls)
+    if (status === "preparing" || status === "swapping") return;
+    if (!isConnected || !onArcTestnet) {
+      setLiveQuote(null);
+      return;
+    }
+    if (!amountIn || Number(amountIn) <= 0) {
+      setLiveQuote(null);
+      return;
+    }
+    if (tokenIn === tokenOut) {
+      setLiveQuote(null);
+      return;
+    }
+
+    // Debounce 500ms — ride out fast typing
+    const timeout = setTimeout(async () => {
+      setQuoteLoading(true);
+      try {
+        const result = await estimate({
+          chainId: ARC_TESTNET_CHAIN_ID,
+          tokenIn,
+          tokenOut,
+          amountIn,
+        });
+        setLiveQuote(
+          result
+            ? { estimatedOut: result.estimatedOut, minOut: result.minOut }
+            : null,
+        );
+      } finally {
+        setQuoteLoading(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timeout);
+    // estimate is referentially stable per connector — exclude from deps to prevent loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenIn, tokenOut, amountIn, isConnected, onArcTestnet, status]);
 
   const canSwap = useMemo(() => {
     return (
@@ -277,9 +327,23 @@ export function SwapForm() {
         <div className="mt-2 flex items-center justify-between text-[11px]">
           <span className="text-zinc-500">est. output:</span>
           <span className="text-zinc-400">
-            {estimatedOut ? `~${estimatedOut} ${tokenOut}` : "calculated on swap"}
+            {quoteLoading
+              ? "fetching..."
+              : liveQuote?.estimatedOut
+                ? `~${liveQuote.estimatedOut} ${tokenOut}`
+                : estimatedOut
+                  ? `~${estimatedOut} ${tokenOut}`
+                  : "enter amount"}
           </span>
         </div>
+        {liveQuote?.minOut && (
+          <div className="mt-1 flex items-center justify-between text-[10px]">
+            <span className="text-zinc-600">min received:</span>
+            <span className="text-zinc-500 font-mono">
+              {liveQuote.minOut} {tokenOut}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Action Button */}

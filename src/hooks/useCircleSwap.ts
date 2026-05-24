@@ -71,6 +71,56 @@ function chainIdToCircleSwapName(chainId: number): string | null {
   return null;
 }
 
+/**
+ * CORS WORKAROUND for Circle Stablecoin Service API.
+ *
+ * Circle's @circle-fin/provider-stablecoin-service-swap SDK injects an
+ * `X-User-Agent` header on every browser fetch (because browsers block setting
+ * `User-Agent` directly). However, the Circle API's CORS policy does not
+ * include `X-User-Agent` in `Access-Control-Allow-Headers`, so the browser
+ * blocks the preflight and you get:
+ *   "Failed to fetch / CORS policy: Request header field x-user-agent is not
+ *    allowed by Access-Control-Allow-Headers in preflight response"
+ *
+ * Until Circle fixes their CORS allowlist, we monkey-patch `fetch` for any
+ * request targeting api.circle.com to strip that header before send. The
+ * header is purely diagnostic telemetry — removing it doesn't affect auth
+ * or the swap operation itself.
+ *
+ * Idempotent — safe to call from both estimate() and swap().
+ */
+function applyCircleFetchPatch() {
+  if (typeof window === "undefined") return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if ((window as any).__circleFetchPatched) return;
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (async (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+  ) => {
+    try {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      if (url.includes("api.circle.com") && init?.headers) {
+        const cleaned = new Headers(init.headers);
+        cleaned.delete("X-User-Agent");
+        cleaned.delete("x-user-agent");
+        return originalFetch(input, { ...init, headers: cleaned });
+      }
+    } catch {
+      // fall through to original on any inspection error
+    }
+    return originalFetch(input, init);
+  }) as typeof window.fetch;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__circleFetchPatched = true;
+}
+
 export function useCircleSwap() {
   const { connector, address: evmAddress } = useAccount();
 
@@ -82,6 +132,75 @@ export function useCircleSwap() {
   const reset = useCallback(() => {
     setState({ status: "idle", steps: [] });
   }, []);
+
+  /**
+   * Get a quote/estimate without executing the swap.
+   * Returns { estimatedOut, minOut, fees } or null on failure.
+   * Used by the form to show live "you'll receive" estimates.
+   */
+  const estimate = useCallback(
+    async ({ chainId, tokenIn, tokenOut, amountIn }: UseCircleSwapArgs) => {
+      try {
+        if (!connector || !evmAddress) return null;
+        if (tokenIn === tokenOut) return null;
+        if (!amountIn || Number(amountIn) <= 0) return null;
+        const circleChainName = chainIdToCircleSwapName(chainId);
+        if (!circleChainName) return null;
+
+        const kitKey =
+          process.env.NEXT_PUBLIC_CIRCLE_KIT_KEY ||
+          "KIT_KEY:747378986a9198e8b76e958f1408ea6f:f39ddddb36e88c4c1f751a7f8525ddd6";
+
+        // Apply CORS patch (idempotent)
+        applyCircleFetchPatch();
+
+        const [
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          { SwapKit } = {} as any,
+          { createViemAdapterFromProvider },
+        ] = await Promise.all([
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          import("@circle-fin/swap-kit") as any,
+          import("@circle-fin/adapter-viem-v2"),
+        ]);
+
+        const eip1193Provider = await connector.getProvider();
+        const evmAdapter = await createViemAdapterFromProvider({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          provider: eip1193Provider as any,
+        });
+
+        const kit = new SwapKit();
+        const quote = await kit.estimate({
+          from: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            adapter: evmAdapter as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            chain: circleChainName as any,
+          },
+          tokenIn,
+          tokenOut,
+          amountIn,
+          config: { kitKey },
+        });
+
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          estimatedOut: (quote as any).estimatedOutput?.amount as
+            | string
+            | undefined,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          minOut: (quote as any).stopLimit?.amount as string | undefined,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          fees: (quote as any).fees,
+        };
+      } catch (e) {
+        console.warn("[useCircleSwap.estimate] failed:", e);
+        return null;
+      }
+    },
+    [connector, evmAddress],
+  );
 
   const swap = useCallback(
     async ({ chainId, tokenIn, tokenOut, amountIn }: UseCircleSwapArgs) => {
@@ -102,55 +221,8 @@ export function useCircleSwap() {
           throw new Error("Amount must be greater than zero");
         }
 
-        // ─────────────────────────────────────────────────────────────────
-        // CORS WORKAROUND for Circle Stablecoin Service API
-        //
-        // Circle's @circle-fin/provider-stablecoin-service-swap SDK injects an
-        // `X-User-Agent` header on every fetch (because browsers block setting
-        // `User-Agent` directly). However, the Circle API's CORS policy does
-        // not include `X-User-Agent` in `Access-Control-Allow-Headers`, so the
-        // browser blocks the preflight and you get:
-        //   "Failed to fetch" / "CORS policy: Request header field x-user-agent
-        //    is not allowed by Access-Control-Allow-Headers in preflight response"
-        //
-        // Until Circle fixes their CORS allowlist, we monkey-patch `fetch` for
-        // requests targeting api.circle.com to strip that header before send.
-        // The header is purely diagnostic (telemetry) — removing it doesn't
-        // affect auth or the swap operation itself.
-        //
-        // Patched once per page load, idempotent.
-        // ─────────────────────────────────────────────────────────────────
-        if (
-          typeof window !== "undefined" &&
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          !(window as any).__circleFetchPatched
-        ) {
-          const originalFetch = window.fetch.bind(window);
-          window.fetch = (async (
-            input: RequestInfo | URL,
-            init?: RequestInit,
-          ) => {
-            try {
-              const url =
-                typeof input === "string"
-                  ? input
-                  : input instanceof URL
-                    ? input.toString()
-                    : input.url;
-              if (url.includes("api.circle.com") && init?.headers) {
-                const cleaned = new Headers(init.headers);
-                cleaned.delete("X-User-Agent");
-                cleaned.delete("x-user-agent");
-                return originalFetch(input, { ...init, headers: cleaned });
-              }
-            } catch {
-              // fall through to original on any inspection error
-            }
-            return originalFetch(input, init);
-          }) as typeof window.fetch;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (window as any).__circleFetchPatched = true;
-        }
+        // Apply CORS workaround (idempotent — see top-level helper for details)
+        applyCircleFetchPatch();
 
         const circleChainName = chainIdToCircleSwapName(chainId);
         if (!circleChainName) {
@@ -262,6 +334,7 @@ export function useCircleSwap() {
   return {
     ...state,
     swap,
+    estimate,
     reset,
   };
 }
