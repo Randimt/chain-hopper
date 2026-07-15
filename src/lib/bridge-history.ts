@@ -3,7 +3,12 @@
  * Stores completed/failed bridges per wallet address in localStorage.
  *
  * Schema versioned for future migration when Phase 2 (multi-aggregator) lands.
+ * 
+ * SECURITY: All data signed with wallet address to prevent localStorage tampering.
  */
+
+import { readSecure, writeSecure, migrateLegacy, removeSecure } from "./storage-security";
+import type { Address } from "viem";
 
 const HISTORY_KEY = "lyxsa:history";
 const LEGACY_HISTORY_KEY = "chain-hopper:history"; // pre-rebrand
@@ -44,50 +49,25 @@ function legacyStorageKey(address: string): string {
   return `${LEGACY_HISTORY_KEY}:${address.toLowerCase()}`;
 }
 
-/**
- * Migrate legacy "chain-hopper:history" entries to "lyxsa:history" once.
- * Idempotent — safe to call repeatedly.
- */
-function migrateLegacyHistory(address: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const newKey = storageKey(address);
-    const oldKey = legacyStorageKey(address);
-    // If new key already has data, no migration needed
-    if (localStorage.getItem(newKey)) return;
-    const legacyData = localStorage.getItem(oldKey);
-    if (!legacyData) return;
-    localStorage.setItem(newKey, legacyData);
-    localStorage.removeItem(oldKey);
-    if (process.env.NODE_ENV === "development") {
-      console.log(`[lyxsa] Migrated history for ${address.slice(0, 6)}...`);
-    }
-  } catch {
-    /* ignore migration errors — legacy data preserved */
-  }
-}
-
 export function loadBridgeHistory(address?: string): BridgeRecord[] {
   if (typeof window === "undefined" || !address) return [];
-  migrateLegacyHistory(address); // run-once auto migration
-  try {
-    const raw = localStorage.getItem(storageKey(address));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  
+  // Migrate legacy unsigned data to signed format
+  migrateLegacy(
+    legacyStorageKey(address),
+    storageKey(address),
+    address as Address,
+  );
+  
+  // Load with signature verification
+  const data = readSecure<BridgeRecord[]>(storageKey(address), address as Address);
+  return data && Array.isArray(data) ? data : [];
 }
 
 export function saveBridgeHistory(address: string, records: BridgeRecord[]) {
-  try {
-    // Keep only the latest MAX_RECORDS
-    const trimmed = records.slice(-MAX_RECORDS);
-    localStorage.setItem(storageKey(address), JSON.stringify(trimmed));
-  } catch {
-    /* quota / private mode */
-  }
+  // Keep only the latest MAX_RECORDS
+  const trimmed = records.slice(-MAX_RECORDS);
+  writeSecure(storageKey(address), trimmed, address as Address);
 }
 
 export function addBridgeRecord(address: string, record: BridgeRecord) {
@@ -103,11 +83,7 @@ export function addBridgeRecord(address: string, record: BridgeRecord) {
 }
 
 export function clearBridgeHistory(address: string) {
-  try {
-    localStorage.removeItem(storageKey(address));
-  } catch {
-    /* ignore */
-  }
+  removeSecure(storageKey(address));
 }
 
 export function generateBridgeId(): string {

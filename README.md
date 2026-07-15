@@ -18,7 +18,7 @@ Native USDC bridging in 30 seconds across 22 EVM testnets + Solana Devnet, with 
 ### Cross-VM Bridge — LIVE
 
 - Bidirectional EVM to Solana via Circle Bridge Kit
-- 22 EVM testnets (Sepolia, Base, Arbitrum, Optimism, Polygon, Avalanche, Linea, Sonic, Sei, Codex, Plume, Unichain, ZKsync, WorldChain, Mantle, XDC, HyperEVM, Injective, Morph, Edge, Pharos, Arc Testnet)
+- 22 EVM testnets (Sepolia, Base, Arbitrum, Optimism, Polygon, Avalanche, Linea, Sonic, Sei, Codex, Plume, Unichain, ZKsync, WorldChain, Mantle, XDC, HyperEVM, Injective, Morph, Edge, Pharos, Arc Testnet) + Rialo coming soon
 - Native USDC mint/burn (no wrapped tokens)
 - Multi-aggregator quote engine (CCTP V2 + Relay + Across)
 
@@ -56,8 +56,9 @@ Native USDC bridging in 30 seconds across 22 EVM testnets + Solana Devnet, with 
 | 02 | Solana cross-VM integration | LIVE | Q2 2026 |
 | 03 | Recipes & batching (sequential queue) | LIVE Beta | Q2 2026 |
 | 04 | Batch bridge (atomic fan-out splitter) | LIVE Beta | Q2 2026 |
-| 05 | Move VM expansion (Aptos + Sui) | PLANNED | Q4 2026 |
-| 06 | Multi-aggregator + swap | PLANNED | 2027 |
+| 05 | Rialo Network integration | COMING SOON | Q3 2026 |
+| 06 | Move VM expansion (Aptos + Sui) | PLANNED | Q4 2026 |
+| 07 | Multi-aggregator + swap | PLANNED | 2027 |
 
 ---
 
